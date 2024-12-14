@@ -230,17 +230,23 @@ int main()
 					{
 						Vector3d v{ prim(i, j, k, 2) ,prim(i, j, k, 3) ,prim(i, j, k, 4) };
 						Vector3d B{ prim(i, j, k, 5) ,prim(i, j, k, 6) ,prim(i, j, k, 7) };
+						Vector3d S{ con(i, j, k, 2) ,con(i, j, k, 3) ,con(i, j, k, 4) };
 						auto dot = [i, j, k, nGhost, &metric](Vector3d vecA, Vector3d vecB) {return double(vecA.transpose() * metric(i + nGhost, j + nGhost, k + nGhost).gamma() * vecB); };
 						auto square = [dot](Vector3d vec) { return dot(vec, vec); };
 						double Gamma = 1 / sqrt(1 - square(v));
+						auto W = S * (metric(i, j, k).gamma().inverse() * v).transpose() + (prim(i, j, k, 1) + 0.5 * (square(B) * (1 + square(v)) - pow(dot(B, v), 2))) * metric(i, j, k).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(B, v) * v * B.transpose();
 						flux(i, j, k, l, 0) = (metric(i, j, k).alpha() * prim(i, j, k, l + 2) - metric(i, j, k).beta()(l)) * con(i, j, k, 0);
 						flux(i, j, k, l, 1) = metric(i, j, k).alpha() * (con(i, j, k, 2 + l) - prim(i, j, k, 2 + l) * con(i, j, k, 0)) - metric(i, j, k).beta()(l) * con(i, j, k, 1);
-						flux(i, j, k, l, 2) = 
-
+						flux(i, j, k, l, 2) = (metric(i, j, k).alpha() * W * metric(i, j, k).gamma())(l, 0) - metric(i, j, k).beta()(l) * con(i, j, k, 2);
+						flux(i, j, k, l, 3) = (metric(i, j, k).alpha() * W * metric(i, j, k).gamma())(l, 1) - metric(i, j, k).beta()(l) * con(i, j, k, 3);
+						flux(i, j, k, l, 4) = (metric(i, j, k).alpha() * W * metric(i, j, k).gamma())(l, 2) - metric(i, j, k).beta()(l) * con(i, j, k, 4);
+						flux(i, j, k, l, 5) = (metric(i, j, k).alpha() * prim(i, j, k, l + 2) - metric(i, j, k).beta()(l)) * con(i, j, k, 5) - (metric(i, j, k).alpha() * prim(i, j, k, 2) - metric(i, j, k).beta()(0)) * con(i, j, k, 5 + l);
+						flux(i, j, k, l, 6) = (metric(i, j, k).alpha() * prim(i, j, k, l + 2) - metric(i, j, k).beta()(l)) * con(i, j, k, 6) - (metric(i, j, k).alpha() * prim(i, j, k, 3) - metric(i, j, k).beta()(1)) * con(i, j, k, 5 + l);
+						flux(i, j, k, l, 7) = (metric(i, j, k).alpha() * prim(i, j, k, l + 2) - metric(i, j, k).beta()(l)) * con(i, j, k, 7) - (metric(i, j, k).alpha() * prim(i, j, k, 4) - metric(i, j, k).beta()(2)) * con(i, j, k, 5 + l);
 					}
 	};
 	std::cout << metric(10, 10, 0).m << std::endl;
 	std::cout << conLx.slice(Eigen::array<Eigen::DenseIndex, 4>{1,1,0,0}, Eigen::array<Eigen::DenseIndex, 4>{1,1,1,8}) << std::endl;
-	std::cout << metric(10, 10, 0).alpha() << std::endl;
+	std::cout << metric(10,10,0).beta() * metric(10, 10, 0).beta().transpose() << std::endl;
 	return 0;
 }
