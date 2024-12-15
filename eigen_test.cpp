@@ -2,16 +2,23 @@
 bnuGRMHD ©️ 2024
 Date: 2024/12/13
 本文件是不加并行（OpenMP或MPI）GRMHD的示例代码
+初代原则：牺牲空间换时间
 */
 
 #include <iostream>
 #include <cmath>
+#include <ctime>
 #include <unsupported/Eigen/CXX11/Tensor>
 #include "Metric.h"
 
 using Eigen::Tensor;
 using Eigen::Vector3d;
 using Eigen::Matrix3d;
+
+inline double max(double a, double b) { return a > b ? a : b; }
+inline double max(double a, double b, double c) { return max(a, max(b, c)); }
+inline double min(double a, double b) { return a < b ? a : b; }
+inline double min(double a, double b, double c) { return min(a, min(b, c)); }
 
 double MC(double a, double b, double c)
 {
@@ -27,8 +34,8 @@ double MC(double a, double b, double c)
 
 int main()
 {
+	auto start = clock();
 	// 物理尺度
-	double adiabaticIndex = 5.0 / 3.0;
 	double xStart = 10;		// 起始点x1坐标
 	double yStart = 10;		// 起始点x2坐标
 	double zStart = 0;		// 起始点x3坐标
@@ -36,18 +43,25 @@ int main()
 	double L2 = 1;			// x2方向物理长度
 	double L3 = 1;			// x3方向物理长度
 	// 分辨率/格子数
-	unsigned short n1 = 32;		// x方向格子数
-	unsigned short n2 = 32;		// y方向格子数
+	unsigned short n1 = 48;		// x方向格子数
+	unsigned short n2 = 24;		// y方向格子数
 	unsigned short n3 = 1;		// z方向格子数
 	unsigned short nComp = 8;	// 分量个数
 	unsigned short nGhost = 2;	// 单边鬼格数量
+	// 常用常量
+	double adiabaticIndex = 5.0 / 3.0;	// 多方指数/绝热指数
+	double theta = 0.5;					// HHL流和TVDLF流混合参数
 	
-	Tensor<MetricComponent, 2> metricFunc(4, 4);												// 度规张量
+	Tensor<MetricComponent, 2> metricFunc(4, 4);												// 度规张量(0,2)型
 	Tensor<MetricComponent, 3> metricDiff(4, 4, 4);												// 度规张量导数
-	Tensor<Metric, 3> metricFuncField(n1 + 2 * nGhost, n2 + 2 * nGhost, n3 + 2 * nGhost);				// 度规场
-	Tensor<Metric, 4> metricDiffField(n1 + 2 * nGhost, n2 + 2 * nGhost, n3 + 2 * nGhost, 4);				// 度规导数场
+	Tensor<Metric, 3> metricFuncField(n1 + 2 * nGhost, n2 + 2 * nGhost, n3 + 2 * nGhost);		// 度规场(0,2)型
+	Tensor<Metric, 4> metricDiffField(n1 + 2 * nGhost, n2 + 2 * nGhost, n3 + 2 * nGhost, 4);	// 度规导数场
+	Tensor<Metric, 3> metricFuncHalfField1(n1, n2, n3);											// 计算流时需要的半步长度规场(0,2)型
+	Tensor<Metric, 3> metricFuncHalfField2(n1, n2, n3);											// 计算流时需要的半步长度规场(0,2)型
+	Tensor<Metric, 3> metricFuncHalfField3(n1, n2, n3);											// 计算流时需要的半步长度规场(0,2)型
 	// 主要量，对应传统GRMHD方程中的P(带鬼格)
 	Tensor<double, 4> prim(n1 + 2 * nGhost, n2 + 2 * nGhost, n3 + 2 * nGhost, nComp);
+	Tensor<double, 4> primHalf(n1, n2, n3, nComp);
 	Tensor<double, 4> primL1(n1, n2, n3, nComp);
 	Tensor<double, 4> primL2(n1, n2, n3, nComp);
 	Tensor<double, 4> primL3(n1, n2, n3, nComp);
@@ -55,6 +69,8 @@ int main()
 	Tensor<double, 4> primR2(n1, n2, n3, nComp);
 	Tensor<double, 4> primR3(n1, n2, n3, nComp);
 	// 守恒量，对应传统GRMHD方程中的U(带鬼格)
+	Tensor<double, 4> con(n1, n2, n3, nComp);
+	Tensor<double, 4> conHalf(n1, n2, n3, nComp);
 	Tensor<double, 4> conL1(n1, n2, n3, nComp);
 	Tensor<double, 4> conL2(n1, n2, n3, nComp);
 	Tensor<double, 4> conL3(n1, n2, n3, nComp);
@@ -62,20 +78,42 @@ int main()
 	Tensor<double, 4> conR2(n1, n2, n3, nComp);
 	Tensor<double, 4> conR3(n1, n2, n3, nComp);
 	// 流(flux)
-	Tensor<double, 5> fluxL1(n1, n2, n3, 3, nComp);
-	Tensor<double, 5> fluxL2(n1, n2, n3, 3, nComp);
-	Tensor<double, 5> fluxL3(n1, n2, n3, 3, nComp);
-	Tensor<double, 5> fluxR1(n1, n2, n3, 3, nComp);
-	Tensor<double, 5> fluxR2(n1, n2, n3, 3, nComp);
-	Tensor<double, 5> fluxR3(n1, n2, n3, 3, nComp);
+	Tensor<double, 4> fluxL1(n1, n2, n3, nComp);
+	Tensor<double, 4> fluxL2(n1, n2, n3, nComp);
+	Tensor<double, 4> fluxL3(n1, n2, n3, nComp);
+	Tensor<double, 4> fluxR1(n1, n2, n3, nComp);
+	Tensor<double, 4> fluxR2(n1, n2, n3, nComp);
+	Tensor<double, 4> fluxR3(n1, n2, n3, nComp);
+	// HHL流
+	Tensor<double, 4> fluxHLL1(n1, n2, n3, nComp);
+	Tensor<double, 4> fluxHLL2(n1, n2, n3, nComp);
+	Tensor<double, 4> fluxHLL3(n1, n2, n3, nComp);
+	// TVDLF流
+	Tensor<double, 4> fluxTVDLF1(n1, n2, n3, nComp);
+	Tensor<double, 4> fluxTVDLF2(n1, n2, n3, nComp);
+	Tensor<double, 4> fluxTVDLF3(n1, n2, n3, nComp);
 	// 源(source)
+	Tensor<double, 4> src(n1, n2, n3, nComp);
 	Tensor<double, 4> srcL1(n1, n2, n3, nComp);
 	Tensor<double, 4> srcL2(n1, n2, n3, nComp);
 	Tensor<double, 4> srcL3(n1, n2, n3, nComp);
 	Tensor<double, 4> srcR1(n1, n2, n3, nComp);
 	Tensor<double, 4> srcR2(n1, n2, n3, nComp);
 	Tensor<double, 4> srcR3(n1, n2, n3, nComp);
-	Tensor<double, 4> xi(n1, n2, n3, 1);														// conv2prim过程需要用到的辅助变量
+	// 特征速度(c_+)
+	Tensor<double, 3> cpL1(n1, n2, n3);
+	Tensor<double, 3> cpL2(n1, n2, n3);
+	Tensor<double, 3> cpL3(n1, n2, n3);
+	Tensor<double, 3> cpR1(n1, n2, n3);
+	Tensor<double, 3> cpR2(n1, n2, n3);
+	Tensor<double, 3> cpR3(n1, n2, n3);
+	// 特征速度(c_-)
+	Tensor<double, 3> cnL1(n1, n2, n3);
+	Tensor<double, 3> cnL2(n1, n2, n3);
+	Tensor<double, 3> cnL3(n1, n2, n3);
+	Tensor<double, 3> cnR1(n1, n2, n3);
+	Tensor<double, 3> cnR2(n1, n2, n3);
+	Tensor<double, 3> cnR3(n1, n2, n3);
 	double M = 1;	// 黑洞质量
 	/*
 	1.初始化
@@ -113,7 +151,17 @@ int main()
 					for (int row = 0; row < 4; row++)
 						for (int col = 0; col < 4; col++)
 							metricDiffField(i, j, k, l).m(row, col) = metricDiff(row, col, l)(xStart + i * L1 / n1, yStart + j * L2 / n2, zStart + k * L3 / n3);
-
+	
+	for (int i = 0; i < n1; i++)
+		for (int j = 0; j < n2; j++)
+			for (int k = 0; k < n3; k++)
+				for (int row = 0; row < 4; row++)
+					for (int col = 0; col < 4; col++)
+					{
+						metricFuncHalfField1(i, j, k).m(row, col) = metricFunc(row, col)(xStart + (2 * i + 3) * L1 / (2 * n1), yStart + (j + 2) * L2 / n2, zStart + (k + 2) * L3 / n3);
+						metricFuncHalfField2(i, j, k).m(row, col) = metricFunc(row, col)(xStart + (i + 2) * L1 / n1, yStart + (2 * j + 3) * L2 / (2 * n2), zStart + (k + 2) * L3 / n3);
+						metricFuncHalfField3(i, j, k).m(row, col) = metricFunc(row, col)(xStart + (i + 2) * L1 / n1, yStart + (j + 2) * L2 / n2, zStart + (2 * k + 3) * L3 / (2 * n3));
+					}
 
 	prim.setZero();
 	primL1.setZero();
@@ -140,7 +188,19 @@ int main()
 	srcR1.setZero();
 	srcR2.setZero();
 	srcR3.setZero();
-	xi.setZero();
+	cpL1.setZero();
+	cpL2.setZero();
+	cpL3.setZero();
+	cpR1.setZero();
+	cpR2.setZero();
+	cpR3.setZero();
+	cnL1.setZero();
+	cnL2.setZero();
+	cnL3.setZero();
+	cnR1.setZero();
+	cnR2.setZero();
+	cnR3.setZero();
+
 	/*
 	2.迭代方程
 		1) 鬼化：给主要量P加上鬼格边界条件
@@ -159,9 +219,9 @@ int main()
 		for (int j = nGhost - 1; j >= 0; j--)
 			for (int k = nGhost - 1; k >= 0; k--)
 			{
-				prim(i, j, k, 0) = prim(i + 1, j + 1, k + 1, 0) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				prim(i, j, k, 1) = prim(i + 1, j + 1, k + 1, 1) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				prim(i, j, k, 5) = prim(i + 1, j + 1, k + 1, 5) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
+				prim(i, j, k, 0) = prim(i + 1, j + 1, k + 1, 0) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i + nGhost, j + nGhost, k + nGhost).m.determinant());
+				prim(i, j, k, 1) = prim(i + 1, j + 1, k + 1, 1) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i + nGhost, j + nGhost, k + nGhost).m.determinant());
+				prim(i, j, k, 5) = prim(i + 1, j + 1, k + 1, 5) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i + nGhost, j + nGhost, k + nGhost).m.determinant());
 				prim(i, j, k, 3) = prim(i + 1, j + 1, k + 1, 3) * (1 - sqrt(pow(L1 / n1, 2) + pow(L2 / n2, 2) + pow(L3 / n3, 2)) / sqrt(pow(xStart + (i + 1) * L1 / n1, 2) + pow(yStart + (j + 1) * L2 / n2, 2) + pow(zStart + (k + 1) * L3 / n3, 2)));
 				prim(i, j, k, 4) = prim(i + 1, j + 1, k + 1, 4) * (1 - sqrt(pow(L1 / n1, 2) + pow(L2 / n2, 2) + pow(L3 / n3, 2)) / sqrt(pow(xStart + (i + 1) * L1 / n1, 2) + pow(yStart + (j + 1) * L2 / n2, 2) + pow(zStart + (k + 1) * L3 / n3, 2)));
 				prim(i, j, k, 6) = prim(i + 1, j + 1, k + 1, 6) * (1 - sqrt(pow(L1 / n1, 2) + pow(L2 / n2, 2) + pow(L3 / n3, 2)) / sqrt(pow(xStart + (i + 1) * L1 / n1, 2) + pow(yStart + (j + 1) * L2 / n2, 2) + pow(zStart + (k + 1) * L3 / n3, 2)));
@@ -173,9 +233,9 @@ int main()
 		for (int j = 0; j < nGhost; j++)
 			for (int k = 0; k < nGhost; k++)
 			{
-				prim(i + 1, j + 1, k + 1, 0) = prim(i, j, k, 0) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				prim(i + 1, j + 1, k + 1, 1) = prim(i, j, k, 1) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				prim(i + 1, j + 1, k + 1, 5) = prim(i, j, k, 5) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
+				prim(i + 1, j + 1, k + 1, 0) = prim(i, j, k, 0) * sqrt(-metricFuncField(i + nGhost, j + nGhost, k + nGhost).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
+				prim(i + 1, j + 1, k + 1, 1) = prim(i, j, k, 1) * sqrt(-metricFuncField(i + nGhost, j + nGhost, k + nGhost).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
+				prim(i + 1, j + 1, k + 1, 5) = prim(i, j, k, 5) * sqrt(-metricFuncField(i + nGhost, j + nGhost, k + nGhost).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
 				prim(i + 1, j + 1, k + 1, 3) = prim(i, j, k, 3) * (1 - sqrt(pow(L1 / n1, 2) + pow(L2 / n2, 2) + pow(L3 / n3, 2)) / sqrt(pow(xStart + i * L1 / n1, 2) + pow(yStart + j * L2 / n2, 2) + pow(zStart + k * L3 / n3, 2)));
 				prim(i + 1, j + 1, k + 1, 4) = prim(i, j, k, 4) * (1 - sqrt(pow(L1 / n1, 2) + pow(L2 / n2, 2) + pow(L3 / n3, 2)) / sqrt(pow(xStart + i * L1 / n1, 2) + pow(yStart + j * L2 / n2, 2) + pow(zStart + k * L3 / n3, 2)));
 				prim(i + 1, j + 1, k + 1, 6) = prim(i, j, k, 6) * (1 - sqrt(pow(L1 / n1, 2) + pow(L2 / n2, 2) + pow(L3 / n3, 2)) / sqrt(pow(xStart + i * L1 / n1, 2) + pow(yStart + j * L2 / n2, 2) + pow(zStart + k * L3 / n3, 2)));
@@ -237,11 +297,33 @@ int main()
 				}
 	};
 
-	auto prim2flux = [n1, n2, n3, nGhost, adiabaticIndex, &metricFuncField](Tensor<double, 4> prim, Tensor<double, 4> con, Tensor<double, 5> &flux) {
+	auto con2prim = [n1, n2, n3, nGhost, adiabaticIndex, &metricFuncField](Tensor<double, 4> con, Tensor<double, 4>& prim) {
 		for (int i = 0; i < n1; i++)
 			for (int j = 0; j < n2; j++)
 				for (int k = 0; k < n3; k++)
-					for(int l = 0; l < 3; l++)
+				{
+					Vector3d S{ con(i, j, k, 2) ,con(i, j, k, 3) ,con(i, j, k, 4) };
+					Vector3d B{ con(i, j, k, 5) ,con(i, j, k, 6) ,con(i, j, k, 7) };
+					auto D = con(i, j, k, 0);
+					auto tau = con(i, j, k, 1);
+					auto dot = [i, j, k, nGhost, &metricFuncField](Vector3d vecA, Vector3d vecB) {return double(vecA.transpose() * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma() * vecB); };
+					auto square = [dot](Vector3d vec) { return dot(vec, vec); };
+					auto f = [D, tau, S, B, dot, square, adiabaticIndex,](double x) {
+						auto Gamma = 1 / sqrt(1 - square(S + dot(S, B) * B / x) / pow(x + square(B), 2));
+						return x - (adiabaticIndex - 1) / adiabaticIndex * (x - Gamma * D) / pow(Gamma, 2) - tau - D + square(B) - 0.5 * (square(B / Gamma) + pow(dot(S, B), 2) / pow(x, 2));
+					};
+					auto df = [D, tau, S, B, dot, square, adiabaticIndex, ](double x) {
+						auto Gamma = 1 / sqrt(1 - square(S + dot(S, B) * B / x) / pow(x + square(B), 2));
+						return x - (adiabaticIndex - 1) / adiabaticIndex * (x - Gamma * D) / pow(Gamma, 2) - tau - D + square(B) - 0.5 * (square(B / Gamma) + pow(dot(S, B), 2) / pow(x, 2));
+					};
+
+				}
+		};
+
+	auto prim2flux = [n1, n2, n3, nGhost, adiabaticIndex, &metricFuncField](Tensor<double, 4> prim, Tensor<double, 4> con, Tensor<double, 4> &flux, short comp) {
+		for (int i = 0; i < n1; i++)
+			for (int j = 0; j < n2; j++)
+				for (int k = 0; k < n3; k++)
 					{
 						Vector3d v{ prim(i, j, k, 2) ,prim(i, j, k, 3) ,prim(i, j, k, 4) };
 						Vector3d B{ prim(i, j, k, 5) ,prim(i, j, k, 6) ,prim(i, j, k, 7) };
@@ -249,15 +331,15 @@ int main()
 						auto dot = [i, j, k, nGhost, &metricFuncField](Vector3d vecA, Vector3d vecB) {return double(vecA.transpose() * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma() * vecB); };
 						auto square = [dot](Vector3d vec) { return dot(vec, vec); };
 						double Gamma = 1 / sqrt(1 - square(v));
-						auto W = S * (metricFuncField(i, j, k).gamma().inverse() * v).transpose() + (prim(i, j, k, 1) + 0.5 * (square(B) * (1 + square(v)) - pow(dot(B, v), 2))) * metricFuncField(i, j, k).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(B, v) * v * B.transpose();
-						flux(i, j, k, l, 0) = (metricFuncField(i, j, k).alpha() * prim(i, j, k, l + 2) - metricFuncField(i, j, k).beta()(l)) * con(i, j, k, 0);
-						flux(i, j, k, l, 1) = metricFuncField(i, j, k).alpha() * (con(i, j, k, 2 + l) - prim(i, j, k, 2 + l) * con(i, j, k, 0)) - metricFuncField(i, j, k).beta()(l) * con(i, j, k, 1);
-						flux(i, j, k, l, 2) = (metricFuncField(i, j, k).alpha() * W * metricFuncField(i, j, k).gamma())(l, 0) - metricFuncField(i, j, k).beta()(l) * con(i, j, k, 2);
-						flux(i, j, k, l, 3) = (metricFuncField(i, j, k).alpha() * W * metricFuncField(i, j, k).gamma())(l, 1) - metricFuncField(i, j, k).beta()(l) * con(i, j, k, 3);
-						flux(i, j, k, l, 4) = (metricFuncField(i, j, k).alpha() * W * metricFuncField(i, j, k).gamma())(l, 2) - metricFuncField(i, j, k).beta()(l) * con(i, j, k, 4);
-						flux(i, j, k, l, 5) = (metricFuncField(i, j, k).alpha() * prim(i, j, k, l + 2) - metricFuncField(i, j, k).beta()(l)) * con(i, j, k, 5) - (metricFuncField(i, j, k).alpha() * prim(i, j, k, 2) - metricFuncField(i, j, k).beta()(0)) * con(i, j, k, 5 + l);
-						flux(i, j, k, l, 6) = (metricFuncField(i, j, k).alpha() * prim(i, j, k, l + 2) - metricFuncField(i, j, k).beta()(l)) * con(i, j, k, 6) - (metricFuncField(i, j, k).alpha() * prim(i, j, k, 3) - metricFuncField(i, j, k).beta()(1)) * con(i, j, k, 5 + l);
-						flux(i, j, k, l, 7) = (metricFuncField(i, j, k).alpha() * prim(i, j, k, l + 2) - metricFuncField(i, j, k).beta()(l)) * con(i, j, k, 7) - (metricFuncField(i, j, k).alpha() * prim(i, j, k, 4) - metricFuncField(i, j, k).beta()(2)) * con(i, j, k, 5 + l);
+						auto W = S * (metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma().inverse() * v).transpose() + (prim(i, j, k, 1) + 0.5 * (square(B) * (1 - square(v)) + pow(dot(B, v), 2))) * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(B, v) * v * B.transpose();
+						flux(i, j, k, 0) = (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * prim(i, j, k, comp + 2) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(comp)) * con(i, j, k, 0);
+						flux(i, j, k, 1) = metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * (con(i, j, k, 2 + comp) - prim(i, j, k, 2 + comp) * con(i, j, k, 0)) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(comp) * con(i, j, k, 1);
+						flux(i, j, k, 2) = (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * W * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma())(comp, 0) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(comp) * con(i, j, k, 2);
+						flux(i, j, k, 3) = (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * W * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma())(comp, 1) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(comp) * con(i, j, k, 3);
+						flux(i, j, k, 4) = (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * W * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma())(comp, 2) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(comp) * con(i, j, k, 4);
+						flux(i, j, k, 5) = (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * prim(i, j, k, 2 + comp) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(comp)) * con(i, j, k, 5) - (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * prim(i, j, k, 2) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(0)) * con(i, j, k, 5 + comp);
+						flux(i, j, k, 6) = (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * prim(i, j, k, 2 + comp) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(comp)) * con(i, j, k, 6) - (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * prim(i, j, k, 3) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(1)) * con(i, j, k, 5 + comp);
+						flux(i, j, k, 7) = (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * prim(i, j, k, 2 + comp) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(comp)) * con(i, j, k, 7) - (metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * prim(i, j, k, 4) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(2)) * con(i, j, k, 5 + comp);
 					}
 	};
 
@@ -283,14 +365,75 @@ int main()
 						metricDiffField(i, j, k, 1).beta()(1), metricDiffField(i, j, k, 2).beta()(1), metricDiffField(i, j, k, 3).beta()(1),
 						metricDiffField(i, j, k, 1).beta()(2), metricDiffField(i, j, k, 2).beta()(2), metricDiffField(i, j, k, 3).beta()(2);
 					double Gamma = 1 / sqrt(1 - square(v));
-					auto W = S * (metricFuncField(i, j, k).gamma().inverse() * v).transpose() + (prim(i, j, k, 1) + 0.5 * (square(B) * (1 + square(v)) - pow(dot(B, v), 2))) * metricFuncField(i, j, k).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(B, v) * v * B.transpose();
-					src(i, j, k, 1) = 0.5 * contract(W, (metricFuncField(i, j, k).beta()(0) * metricDiffField(i, j, k, 1).gamma() + metricFuncField(i, j, k).beta()(1) * metricDiffField(i, j, k, 2).gamma() + metricFuncField(i, j, k).beta()(2) * metricDiffField(i, j, k, 3).gamma()))
+					auto W = S * (metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma().inverse() * v).transpose() + (prim(i, j, k, 1) + 0.5 * (square(B) * (1 - square(v)) + pow(dot(B, v), 2))) * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(B, v) * v * B.transpose();
+					src(i, j, k, 1) = 0.5 * contract(W, (metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(0) * metricDiffField(i, j, k, 1).gamma() + metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(1) * metricDiffField(i, j, k, 2).gamma() + metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(2) * metricDiffField(i, j, k, 3).gamma()))
 						+ contract(W * metricFuncField(i,j,k).gamma(), betaDiff)
-						- (metricFuncField(i, j, k).gamma().inverse() * S)(0) * metricDiffField(i, j, k, 1).alpha() - (metricFuncField(i, j, k).gamma().inverse() * S)(1) * metricDiffField(i, j, k, 2).alpha() - (metricFuncField(i, j, k).gamma().inverse() * S)(2) * metricDiffField(i, j, k, 3).alpha();
-					src(i, j, k, 2) = 0.5 * metricFuncField(i, j, k).alpha() * contract(W, metricDiffField(i, j, k, 1).gamma()) + dot(S, metricDiffField(i, j, k, 1).beta()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i, j, k, 1).alpha();
-					src(i, j, k, 3) = 0.5 * metricFuncField(i, j, k).alpha() * contract(W, metricDiffField(i, j, k, 2).gamma()) + dot(S, metricDiffField(i, j, k, 2).beta()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i, j, k, 2).alpha();
-					src(i, j, k, 4) = 0.5 * metricFuncField(i, j, k).alpha() * contract(W, metricDiffField(i, j, k, 3).gamma()) + dot(S, metricDiffField(i, j, k, 3).beta()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i, j, k, 3).alpha();
+						- (metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma().inverse() * S)(0) * metricDiffField(i, j, k, 1).alpha() - (metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma().inverse() * S)(1) * metricDiffField(i, j, k, 2).alpha() - (metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma().inverse() * S)(2) * metricDiffField(i, j, k, 3).alpha();
+					src(i, j, k, 2) = 0.5 * metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * contract(W, metricDiffField(i, j, k, 1).gamma()) + dot(S, metricDiffField(i, j, k, 1).beta()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i, j, k, 1).alpha();
+					src(i, j, k, 3) = 0.5 * metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * contract(W, metricDiffField(i, j, k, 2).gamma()) + dot(S, metricDiffField(i, j, k, 2).beta()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i, j, k, 2).alpha();
+					src(i, j, k, 4) = 0.5 * metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha() * contract(W, metricDiffField(i, j, k, 3).gamma()) + dot(S, metricDiffField(i, j, k, 3).beta()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i, j, k, 3).alpha();
 				}
+	};
+
+	auto prim2c = [n1, n2, n3, nGhost, adiabaticIndex, &metricFuncField](Tensor<double, 4> prim, Tensor<double, 3> c, Tensor<Metric, 3> &metricFuncHalfField, short sign, short comp) {
+		for (int i = 0; i < n1; i++)
+			for (int j = 0; j < n2; j++)
+				for (int k = 0; k < n3; k++)
+				{
+					Vector3d v{ prim(i, j, k, 2) ,prim(i, j, k, 3) ,prim(i, j, k, 4) };
+					Vector3d B{ prim(i, j, k, 5) ,prim(i, j, k, 6) ,prim(i, j, k, 7) };
+					auto dot = [i, j, k, nGhost, &metricFuncField](Vector3d vecA, Vector3d vecB) {return double(vecA.transpose() * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma() * vecB); };
+					auto square = [dot](Vector3d vec) { return dot(vec, vec); };
+					double Gamma = 1 / sqrt(1 - square(v));
+					auto u0 = Gamma / metricFuncField(i + nGhost, j + nGhost, k + nGhost).alpha();
+					Vector3d ui = { Gamma * (prim(i,j,k,2) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(0)),
+									Gamma * (prim(i,j,k,3) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(1)),
+									Gamma * (prim(i,j,k,4) - metricFuncField(i + nGhost, j + nGhost, k + nGhost).beta()(2)) };
+					auto cs_square = adiabaticIndex * prim(i, j, k, 1) / (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1));
+					auto cA_square = (square(B) * (1 - square(v)) + pow(dot(B, v), 2)) / (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1) + square(B) * (1 - square(v)) + pow(dot(B, v), 2));
+					auto vf_square = cA_square + cs_square - cA_square * cs_square;
+					auto sigmaf = (1 - vf_square) / vf_square;
+					auto metricInv = metricFuncHalfField(i, j, k).m.inverse();
+					c(i, j, k) = (metricInv(0, comp) - pow(sigmaf, 2) * u0 * ui(comp)) / (metricInv(0,0) - pow(sigmaf, 2) * u0 * u0) + sign * sqrt(
+						pow((metricInv(0, comp) - pow(sigmaf, 2) * u0 * ui(comp)) / (metricInv(0, 0) - pow(sigmaf, 2) * u0 * u0), 2)
+						- (metricInv(comp, comp) - sigmaf * ui(comp) * ui(comp)) / (metricInv(0, 0) - sigmaf * u0 * u0)
+					);
+				}
+	};
+
+	auto calFluxHHL = [n1, n2, n3, nComp](Tensor<double, 3> cpL, Tensor<double, 3> cpR,
+		Tensor<double, 3> cnL, Tensor<double, 3> cnR,
+		Tensor<double, 4> conL, Tensor<double, 4> conR,
+		Tensor<double, 4> fluxL, Tensor<double, 4> fluxR,
+		Tensor<double, 4>& fluxHLL
+		) {
+			for (int i = 0; i < n1; i++)
+				for (int j = 0; j < n2; j++)
+					for (int k = 0; k < n3; k++)
+						for(int l = 0; l < nComp; l++)
+						{
+							auto c_max = max(0, cpR(i, j, k), cpL(i, j, k));
+							auto c_min = -min(0, cnR(i, j, k), cnL(i, j, k));
+							fluxHLL(i, j, k, l) = (c_min * fluxR(i, j, k, l) + c_max * fluxL(i, j, k, l) - c_max * c_min * (conR(i, j, k, l) - conL(i, j, k, l))) / (c_max + c_min);
+						}
+	};
+
+	auto calFluxTVDLF = [n1, n2, n3, nComp](Tensor<double, 3> cpL, Tensor<double, 3> cpR,
+		Tensor<double, 3> cnL, Tensor<double, 3> cnR,
+		Tensor<double, 4> conL, Tensor<double, 4> conR,
+		Tensor<double, 4> fluxL, Tensor<double, 4> fluxR,
+		Tensor<double, 4>& fluxTVDLF
+		) {
+			for (int i = 0; i < n1; i++)
+				for (int j = 0; j < n2; j++)
+					for (int k = 0; k < n3; k++)
+						for (int l = 0; l < nComp; l++)
+						{
+							auto c_max = max(0, cpR(i, j, k), cpL(i, j, k));
+							auto c_min = -min(0, cnR(i, j, k), cnL(i, j, k));
+							auto c = max(c_max, c_min);
+							fluxTVDLF(i, j, k, l) = 0.5 * (fluxR(i, j, k, l) + fluxL(i, j, k, l)) - 0.5 * c * (conR(i, j, k, l) - conL(i, j, k, l));
+						}
 	};
 
 	prim2con(primL1, conL1);
@@ -299,20 +442,64 @@ int main()
 	prim2con(primR1, conR1);
 	prim2con(primR2, conR2);
 	prim2con(primR3, conR3);
-	prim2flux(primL1, conL1, fluxL1);
-	prim2flux(primL2, conL2, fluxL2);
-	prim2flux(primL3, conL3, fluxL3);
-	prim2flux(primR1, conR1, fluxR1);
-	prim2flux(primR2, conR2, fluxR2);
-	prim2flux(primR3, conR3, fluxR3);
+	prim2flux(primL1, conL1, fluxL1, 0);
+	prim2flux(primL2, conL2, fluxL2, 1);
+	prim2flux(primL3, conL3, fluxL3, 2);
+	prim2flux(primR1, conR1, fluxR1, 0);
+	prim2flux(primR2, conR2, fluxR2, 1);
+	prim2flux(primR3, conR3, fluxR3, 2);
 	prim2src(primL1, conL1, srcL1);
 	prim2src(primL2, conL2, srcL2);
 	prim2src(primL3, conL3, srcL3);
 	prim2src(primR1, conR1, srcR1);
 	prim2src(primR2, conR2, srcR2);
 	prim2src(primR3, conR3, srcR3);
+	prim2c(primL1, cpL1, metricFuncHalfField1, 1, 0);
+	prim2c(primL2, cpL2, metricFuncHalfField2, 1, 1);
+	prim2c(primL3, cpL3, metricFuncHalfField3, 1, 2);
+	prim2c(primR1, cpR1, metricFuncHalfField1, 1, 0);
+	prim2c(primR2, cpR2, metricFuncHalfField2, 1, 1);
+	prim2c(primR3, cpR3, metricFuncHalfField3, 1, 2);
+	prim2c(primL1, cnL1, metricFuncHalfField1, -1, 0);
+	prim2c(primL2, cnL2, metricFuncHalfField2, -1, 1);
+	prim2c(primL3, cnL3, metricFuncHalfField3, -1, 2);
+	prim2c(primR1, cnR1, metricFuncHalfField1, -1, 0);
+	prim2c(primR2, cnR2, metricFuncHalfField2, -1, 1);
+	prim2c(primR3, cnR3, metricFuncHalfField3, -1, 2);
+	calFluxHHL(cpL1, cpR1, cnL1, cnR1, conL1, conR1, fluxL1, fluxR1, fluxHLL1);
+	calFluxHHL(cpL2, cpR2, cnL2, cnR2, conL2, conR2, fluxL2, fluxR2, fluxHLL2);
+	calFluxHHL(cpL3, cpR3, cnL3, cnR3, conL3, conR3, fluxL3, fluxR3, fluxHLL3);
+	calFluxTVDLF(cpL1, cpR1, cnL1, cnR1, conL1, conR1, fluxL1, fluxR1, fluxTVDLF1);
+	calFluxTVDLF(cpL2, cpR2, cnL2, cnR2, conL2, conR2, fluxL2, fluxR2, fluxTVDLF2);
+	calFluxTVDLF(cpL3, cpR3, cnL3, cnR3, conL3, conR3, fluxL3, fluxR3, fluxTVDLF3);
+	Tensor<double, 4> fluxLLF1 = theta * fluxHLL1 + (1 - theta) * fluxTVDLF1;
+	Tensor<double, 4> fluxLLF2 = theta * fluxHLL2 + (1 - theta) * fluxTVDLF2;
+	Tensor<double, 4> fluxLLF3 = theta * fluxHLL3 + (1 - theta) * fluxTVDLF3;
+	// 4.半步长迭代
+	prim2con(prim, con);
+	prim2src(prim, con, src);
+	for (int i = 0; i < n1; i++)
+		for (int j = 0; j < n2; j++)
+			for (int k = 0; k < n3; k++)
+			{
+				auto c1max = max(0, cpR1(i,j,k), cpL1(i, j, k));
+				auto c1min = -min(0, cnR1(i, j, k), cnL1(i, j, k));
+				auto c2max = max(0, cpR2(i, j, k), cpL2(i, j, k));
+				auto c2min = -min(0, cnR2(i, j, k), cnL2(i, j, k));
+				auto c3max = max(0, cpR3(i, j, k), cpL3(i, j, k));
+				auto c3min = -min(0, cnR3(i, j, k), cnL3(i, j, k));
+				auto c1 = max(c1max, c1min);
+				auto c2 = max(c2max, c2min);
+				auto c3 = max(c3max, c3min);
+				auto Delta_t = min(L1 / (2 * n1 * c1), L2 / (2 * n2 * c2), L3 / (2 * n3 * c3));
+				for (int l = 0; l < nComp; l++)
+					conHalf(i, j, k, l) = con(i, j, k, l) + src(i, j, k, l)
+					- Delta_t / (2 * L1 / n1) * (sqrt(metricFuncField(i + 1, j, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF1(i + 1, j, k, l) - fluxLLF1(i, j, k, l))
+					- Delta_t / (2 * L2 / n2) * (sqrt(metricFuncField(i, j + 1, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF1(i, j + 1, k, l) - fluxLLF1(i, j, k, l))
+					- Delta_t / (2 * L3 / n3) * (sqrt(metricFuncField(i, j, k + 1).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF1(i, j, k + 1, l) - fluxLLF1(i, j, k, l));
+			}
 
-	std::cout << conL1.slice(Eigen::array<Eigen::DenseIndex, 4>{1,1,0,0}, Eigen::array<Eigen::DenseIndex, 4>{1,1,1,8}) << std::endl;
+	std::cout << "Time(ms): " << clock() - start << std::endl;
 	
 	return 0;
 }
