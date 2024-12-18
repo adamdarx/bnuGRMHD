@@ -107,6 +107,7 @@
       <AdditionalIncludeDirectories>D:\workspace\eigen;</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <OpenMPSupport>true</OpenMPSupport>
+      <Optimization>Disabled</Optimization>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

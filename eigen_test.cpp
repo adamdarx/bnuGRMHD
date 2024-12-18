@@ -6,14 +6,20 @@ Date: 2024/12/13
 */
 
 #include <iostream>
+#include <vector>
+#include <thread>
 #include <cmath>
 #include <ctime>
 #include <unsupported/Eigen/CXX11/Tensor>
 #include "Metric.h"
+#include <omp.h>
 
 using Eigen::Tensor;
 using Eigen::Vector3d;
 using Eigen::Matrix3d;
+using std::thread;
+using std::ref;
+using std::vector;
 
 inline double max(double a, double b) { return a > b ? a : b; }
 inline double max(double a, double b, double c) { return max(a, max(b, c)); }
@@ -34,7 +40,7 @@ double MC(double a, double b, double c)
 
 int main()
 {
-	auto start = clock();
+	omp_set_num_threads(8);
 	// 物理尺度
 	double xStart = 10;		// 起始点x1坐标
 	double yStart = 10;		// 起始点x2坐标
@@ -43,15 +49,20 @@ int main()
 	double L2 = 1;			// x2方向物理长度
 	double L3 = 1;			// x3方向物理长度
 	// 分辨率/格子数
-	unsigned short n1 = 24;		// x方向格子数
+	unsigned short n1 = 12;		// x方向格子数
 	unsigned short n2 = 12;		// y方向格子数
 	unsigned short n3 = 1;		// z方向格子数
 	unsigned short nComp = 8;	// 分量个数
 	unsigned short nGhost = 2;	// 单边鬼格数量
 	// 常用常量
-	double adiabaticIndex = 5.0 / 3.0;	// 多方指数/绝热指数
-	double theta = 0.5;					// HHL流和TVDLF流混合参数
-	
+	double adiabaticIndex = 5.0 / 3.0;				// 多方指数/绝热指数
+	double theta = 0.5;								// HHL流和TVDLF流混合参数
+	auto launch = [n1, n2, n3](vector<vector<vector<thread>>> &threadMatrix) {
+		for (int i = 0; i < n1; i++)
+			for (int j = 0; j < n2; j++)
+				for (int k = 0; k < n3; k++)
+					threadMatrix[i][j][k].join();
+	};
 	Tensor<MetricComponent, 2> metricFunc(4, 4);												// 度规张量(0,2)型
 	Tensor<MetricComponent, 3> metricDiff(4, 4, 4);												// 度规张量导数
 	Tensor<Metric, 3> metricFuncField(n1 + 2 * nGhost, n2 + 2 * nGhost, n3 + 2 * nGhost);		// 度规场(0,2)型
@@ -164,42 +175,6 @@ int main()
 					}
 
 	prim.setZero();
-	primL1.setZero();
-	primL2.setZero();
-	primL3.setZero();
-	primR1.setZero();
-	primR2.setZero();
-	primR3.setZero();
-	conL1.setZero();
-	conL2.setZero();
-	conL3.setZero();
-	conR1.setZero();
-	conR2.setZero();
-	conR3.setZero();
-	fluxL1.setZero();
-	fluxL2.setZero();
-	fluxL3.setZero();
-	fluxR1.setZero();
-	fluxR2.setZero();
-	fluxR3.setZero();
-	srcL1.setZero();
-	srcL2.setZero();
-	srcL3.setZero();
-	srcR1.setZero();
-	srcR2.setZero();
-	srcR3.setZero();
-	cpL1.setZero();
-	cpL2.setZero();
-	cpL3.setZero();
-	cpR1.setZero();
-	cpR2.setZero();
-	cpR3.setZero();
-	cnL1.setZero();
-	cnL2.setZero();
-	cnL3.setZero();
-	cnR1.setZero();
-	cnR2.setZero();
-	cnR3.setZero();
 
 	/*
 	2.迭代方程
@@ -215,6 +190,7 @@ int main()
 	1)鬼化
 		分成两边分别鬼化
 	*/
+	auto start = clock();
 	for (int i = nGhost - 1; i >= 0; i--)
 		for (int j = nGhost - 1; j >= 0; j--)
 			for (int k = nGhost - 1; k >= 0; k--)
@@ -277,29 +253,43 @@ int main()
 	/*
 	3) 计算流(flux)
 	*/
-	auto prim2con = [n1, n2, n3, nGhost, adiabaticIndex, &metricFuncField](Tensor<double, 4> prim, Tensor<double, 4> &con) {
+	auto prim2con = [n1, n2, n3, nGhost, adiabaticIndex, &metricFuncField, launch](Tensor<double, 4> prim, Tensor<double, 4> &con) {
+		auto threadFunc = [prim, &con, nGhost, adiabaticIndex, &metricFuncField](int i, int j, int k) {
+			Vector3d v{ prim(i, j, k, 2) ,prim(i, j, k, 3) ,prim(i, j, k, 4) };
+			Vector3d B{ prim(i, j, k, 5) ,prim(i, j, k, 6) ,prim(i, j, k, 7) };
+			auto dot = [i, j, k, nGhost, &metricFuncField](Vector3d vecA, Vector3d vecB) {return double(vecA.transpose() * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma() * vecB); };
+			auto square = [dot](Vector3d vec) { return dot(vec, vec); };
+			double Gamma = 1 / sqrt(1 - square(v));
+			con(i, j, k, 0) = Gamma * prim(i, j, k, 0);
+			con(i, j, k, 1) = (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1)) * pow(Gamma, 2) - prim(i, j, k, 1) + 0.5 * (square(B) * (1 + square(v) - pow(dot(B, v), 2))) - Gamma * prim(i, j, k, 0);
+			con(i, j, k, 2) = (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1)) * pow(Gamma, 2) * prim(i, j, k, 2) + square(B) * prim(i, j, k, 2) - dot(B, v) * prim(i, j, k, 5);
+			con(i, j, k, 3) = (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1)) * pow(Gamma, 2) * prim(i, j, k, 3) + square(B) * prim(i, j, k, 3) - dot(B, v) * prim(i, j, k, 6);
+			con(i, j, k, 4) = (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1)) * pow(Gamma, 2) * prim(i, j, k, 4) + square(B) * prim(i, j, k, 4) - dot(B, v) * prim(i, j, k, 7);
+			con(i, j, k, 5) = prim(i, j, k, 5);
+			con(i, j, k, 6) = prim(i, j, k, 6);
+			con(i, j, k, 7) = prim(i, j, k, 7);
+		};
+
+		//vector<vector<vector<thread>>> threadMatrix;		// 用来并发化嵌套循环的线程阵列
+		//for (int i = 0; i < n1; i++)
+		//{
+		//	threadMatrix.push_back(vector<vector<thread>>());
+		//	for (int j = 0; j < n2; j++)
+		//	{
+		//		threadMatrix.back().push_back(vector<thread>());
+		//		for (int k = 0; k < n3; k++)
+		//			threadMatrix.back().back().push_back(thread(threadFunc, i, j, k));
+		//	}
+		//}
+		//launch(threadMatrix);
 		for (int i = 0; i < n1; i++)
 			for (int j = 0; j < n2; j++)
 				for (int k = 0; k < n3; k++)
-				{
-					Vector3d v{ prim(i, j, k, 2) ,prim(i, j, k, 3) ,prim(i, j, k, 4) };
-					Vector3d B{ prim(i, j, k, 5) ,prim(i, j, k, 6) ,prim(i, j, k, 7) };
-					auto dot = [i, j, k, nGhost, &metricFuncField](Vector3d vecA, Vector3d vecB) {return double(vecA.transpose() * metricFuncField(i + nGhost, j + nGhost, k + nGhost).gamma() * vecB); };
-					auto square = [dot](Vector3d vec) { return dot(vec, vec); };
-					double Gamma = 1 / sqrt(1 - square(v));
-					con(i, j, k, 0) = Gamma * prim(i, j, k, 0);
-					con(i, j, k, 1) = (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1)) * pow(Gamma, 2) - prim(i, j, k, 1) + 0.5 * (square(B) * (1 + square(v) - pow(dot(B, v), 2))) - Gamma * prim(i, j, k, 0);
-					con(i, j, k, 2) = (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1)) * pow(Gamma, 2) * prim(i, j, k, 2) + square(B) * prim(i, j, k, 2) - dot(B, v) * prim(i, j, k, 5);
-					con(i, j, k, 3) = (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1)) * pow(Gamma, 2) * prim(i, j, k, 3) + square(B) * prim(i, j, k, 3) - dot(B, v) * prim(i, j, k, 6);
-					con(i, j, k, 4) = (prim(i, j, k, 0) + adiabaticIndex / (adiabaticIndex - 1) * prim(i, j, k, 1)) * pow(Gamma, 2) * prim(i, j, k, 4) + square(B) * prim(i, j, k, 4) - dot(B, v) * prim(i, j, k, 7);
-					con(i, j, k, 5) = prim(i, j, k, 5);
-					con(i, j, k, 6) = prim(i, j, k, 6);
-					con(i, j, k, 7) = prim(i, j, k, 7);
-				}
+					threadFunc(i, j, k);
 	};
 
 	auto con2prim = [n1, n2, n3, nGhost, adiabaticIndex, &metricFuncField](Tensor<double, 4> con, Tensor<double, 4>& prim) {
-		auto max_iter = 0;
+		auto max_iter = 5;
 		auto tol = 0.01;
 		for (int i = 0; i < n1; i++)
 			for (int j = 0; j < n2; j++)
@@ -338,7 +328,7 @@ int main()
 									sqrt(1 - square(S + (B * dot(S, B)) / x) /
 										pow(square(B) + x, 2)))) / adiabaticIndex;
 					};
-					double x0 = 0.0;
+					double x0 = 0.1;
 					for(int iter = 0; iter < max_iter; iter++)
 					{
 						auto x1 = x0 - f(x0) / df(x0); // 牛顿迭代公式
@@ -346,11 +336,21 @@ int main()
 							break;
 						x0 = x1;
 					}
-					//TODO: chi -> prim
+
+					auto Gamma = 1 / sqrt(1 - square(S + dot(S, B) * B / x0) / pow(x0 + square(B), 2));
+					prim(i, j, k, 0) = D / Gamma;
+					prim(i, j, k, 1) = (adiabaticIndex - 1) / adiabaticIndex * (x0 - Gamma * D) / pow(Gamma, 2);
+					prim(i, j, k, 2) = (S(0) + dot(S, B) * B(0) / x0) / (x0 + square(B));
+					prim(i, j, k, 3) = (S(1) + dot(S, B) * B(1) / x0) / (x0 + square(B));
+					prim(i, j, k, 4) = (S(2) + dot(S, B) * B(2) / x0) / (x0 + square(B));
+					prim(i, j, k, 5) = B(0);
+					prim(i, j, k, 6) = B(1);
+					prim(i, j, k, 7) = B(2);
 				}
 		};
 
 	auto prim2flux = [n1, n2, n3, nGhost, adiabaticIndex, &metricFuncField](Tensor<double, 4> prim, Tensor<double, 4> con, Tensor<double, 4> &flux, short comp) {
+		
 		for (int i = 0; i < n1; i++)
 			for (int j = 0; j < n2; j++)
 				for (int k = 0; k < n3; k++)
@@ -465,47 +465,45 @@ int main()
 							fluxTVDLF(i, j, k, l) = 0.5 * (fluxR(i, j, k, l) + fluxL(i, j, k, l)) - 0.5 * c * (conR(i, j, k, l) - conL(i, j, k, l));
 						}
 	};
+	
+	auto basicCalc = [prim2con, prim2flux, prim2src, prim2c](Tensor<double, 4> prim, Tensor<double, 4>& con, Tensor<double, 4>& flux, Tensor<double, 4>& src, Tensor<double, 3>& cp, Tensor<double, 3>& cn, Tensor<Metric, 3>& metricFuncHalfField, short comp) {
+		prim2con(prim, con);
+		prim2flux(prim, con, flux, comp);
+		prim2src(prim, con, src);
+		prim2c(prim, cp, metricFuncHalfField, 1, comp);
+		prim2c(prim, cn, metricFuncHalfField, -1, comp);
+	};
 
-	prim2con(primL1, conL1);
-	prim2con(primL2, conL2);
-	prim2con(primL3, conL3);
-	prim2con(primR1, conR1);
-	prim2con(primR2, conR2);
-	prim2con(primR3, conR3);
-	prim2flux(primL1, conL1, fluxL1, 0);
-	prim2flux(primL2, conL2, fluxL2, 1);
-	prim2flux(primL3, conL3, fluxL3, 2);
-	prim2flux(primR1, conR1, fluxR1, 0);
-	prim2flux(primR2, conR2, fluxR2, 1);
-	prim2flux(primR3, conR3, fluxR3, 2);
-	prim2src(primL1, conL1, srcL1);
-	prim2src(primL2, conL2, srcL2);
-	prim2src(primL3, conL3, srcL3);
-	prim2src(primR1, conR1, srcR1);
-	prim2src(primR2, conR2, srcR2);
-	prim2src(primR3, conR3, srcR3);
-	prim2c(primL1, cpL1, metricFuncHalfField1, 1, 0);
-	prim2c(primL2, cpL2, metricFuncHalfField2, 1, 1);
-	prim2c(primL3, cpL3, metricFuncHalfField3, 1, 2);
-	prim2c(primR1, cpR1, metricFuncHalfField1, 1, 0);
-	prim2c(primR2, cpR2, metricFuncHalfField2, 1, 1);
-	prim2c(primR3, cpR3, metricFuncHalfField3, 1, 2);
-	prim2c(primL1, cnL1, metricFuncHalfField1, -1, 0);
-	prim2c(primL2, cnL2, metricFuncHalfField2, -1, 1);
-	prim2c(primL3, cnL3, metricFuncHalfField3, -1, 2);
-	prim2c(primR1, cnR1, metricFuncHalfField1, -1, 0);
-	prim2c(primR2, cnR2, metricFuncHalfField2, -1, 1);
-	prim2c(primR3, cnR3, metricFuncHalfField3, -1, 2);
-	calFluxHHL(cpL1, cpR1, cnL1, cnR1, conL1, conR1, fluxL1, fluxR1, fluxHLL1);
-	calFluxHHL(cpL2, cpR2, cnL2, cnR2, conL2, conR2, fluxL2, fluxR2, fluxHLL2);
-	calFluxHHL(cpL3, cpR3, cnL3, cnR3, conL3, conR3, fluxL3, fluxR3, fluxHLL3);
-	calFluxTVDLF(cpL1, cpR1, cnL1, cnR1, conL1, conR1, fluxL1, fluxR1, fluxTVDLF1);
-	calFluxTVDLF(cpL2, cpR2, cnL2, cnR2, conL2, conR2, fluxL2, fluxR2, fluxTVDLF2);
-	calFluxTVDLF(cpL3, cpR3, cnL3, cnR3, conL3, conR3, fluxL3, fluxR3, fluxTVDLF3);
+	auto fluxCalc = [calFluxHHL, calFluxTVDLF](Tensor<double, 3> cpL, Tensor<double, 3> cpR, Tensor<double, 3> cnL, Tensor<double, 3> cnR, Tensor<double, 4> conL, Tensor<double, 4> conR, Tensor<double, 4> fluxL, Tensor<double, 4> fluxR, Tensor<double, 4>& fluxHLL, Tensor<double, 4>& fluxTVDLF) {
+		calFluxHHL(cpL, cpR, cnL, cnR, conL, conR, fluxL, fluxR, fluxHLL);
+		calFluxTVDLF(cpL, cpR, cnL, cnR, conL, conR, fluxL, fluxR, fluxTVDLF);
+	};
+	// 可并发
+	{
+		thread th1(basicCalc, primL1, ref(conL1), ref(fluxL1), ref(srcL1), ref(cpL1), ref(cnL1), ref(metricFuncHalfField1), 0);
+		thread th2(basicCalc, primL2, ref(conL2), ref(fluxL2), ref(srcL2), ref(cpL2), ref(cnL2), ref(metricFuncHalfField2), 1);
+		thread th3(basicCalc, primL3, ref(conL3), ref(fluxL3), ref(srcL3), ref(cpL3), ref(cnL3), ref(metricFuncHalfField3), 2);
+		thread th4(basicCalc, primR1, ref(conR1), ref(fluxR1), ref(srcR1), ref(cpR1), ref(cnR1), ref(metricFuncHalfField1), 0);
+		thread th5(basicCalc, primR2, ref(conR2), ref(fluxR2), ref(srcR2), ref(cpR2), ref(cnR2), ref(metricFuncHalfField2), 1);
+		thread th6(basicCalc, primR3, ref(conR3), ref(fluxR3), ref(srcR3), ref(cpR3), ref(cnR3), ref(metricFuncHalfField3), 2);
+		th1.join();
+		th2.join();
+		th3.join();
+		th4.join();
+		th5.join();
+		th6.join();
+	}
+	{
+		thread th1(fluxCalc, cpL1, cpR1, cnL1, cnR1, conL1, conR1, fluxL1, fluxR1, ref(fluxHLL1), ref(fluxTVDLF1));
+		thread th2(fluxCalc, cpL2, cpR2, cnL2, cnR2, conL2, conR2, fluxL2, fluxR2, ref(fluxHLL2), ref(fluxTVDLF2));
+		thread th3(fluxCalc, cpL3, cpR3, cnL3, cnR3, conL3, conR3, fluxL3, fluxR3, ref(fluxHLL3), ref(fluxTVDLF3));
+		th1.join();
+		th2.join();
+		th3.join();
+	}
 	Tensor<double, 4> fluxLLF1 = theta * fluxHLL1 + (1 - theta) * fluxTVDLF1;
 	Tensor<double, 4> fluxLLF2 = theta * fluxHLL2 + (1 - theta) * fluxTVDLF2;
 	Tensor<double, 4> fluxLLF3 = theta * fluxHLL3 + (1 - theta) * fluxTVDLF3;
-
 	// 4.半步长迭代
 	prim2con(prim, con);
 	prim2src(prim, con, src);
@@ -523,54 +521,38 @@ int main()
 				auto c2 = max(c2max, c2min);
 				auto c3 = max(c3max, c3min);
 				auto Delta_t = min(L1 / (2 * n1 * c1), L2 / (2 * n2 * c2), L3 / (2 * n3 * c3));
+				#pragma omp parallel
 				for (int l = 0; l < nComp; l++)
+					// TODO: gamma存在半步长和整步长问题
 					conHalf(i, j, k, l) = con(i, j, k, l) + src(i, j, k, l)
-					- Delta_t / (2 * L1 / n1) * (sqrt(metricFuncField(i + 1, j, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF1(i + 1, j, k, l) - fluxLLF1(i, j, k, l))
-					- Delta_t / (2 * L2 / n2) * (sqrt(metricFuncField(i, j + 1, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF2(i, j + 1, k, l) - fluxLLF1(i, j, k, l))
-					- Delta_t / (2 * L3 / n3) * (sqrt(metricFuncField(i, j, k + 1).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF3(i, j, k + 1, l) - fluxLLF1(i, j, k, l));
+					- Delta_t / (2 * L1 / n1) * (sqrt(metricFuncHalfField1(i + 1, j, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF1(i + 1, j, k, l) - fluxLLF1(i, j, k, l))
+					- Delta_t / (2 * L2 / n2) * (sqrt(metricFuncHalfField2(i, j + 1, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF2(i, j + 1, k, l) - fluxLLF1(i, j, k, l))
+					- Delta_t / (2 * L3 / n3) * (sqrt(metricFuncHalfField3(i, j, k + 1).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF3(i, j, k + 1, l) - fluxLLF1(i, j, k, l));
 			}
-
 	con2prim(conHalf, primHalf);
 	interpolate(primHalf);
-	prim2con(primL1, conL1);
-	prim2con(primL2, conL2);
-	prim2con(primL3, conL3);
-	prim2con(primR1, conR1);
-	prim2con(primR2, conR2);
-	prim2con(primR3, conR3);
-	prim2flux(primL1, conL1, fluxL1, 0);
-	prim2flux(primL2, conL2, fluxL2, 1);
-	prim2flux(primL3, conL3, fluxL3, 2);
-	prim2flux(primR1, conR1, fluxR1, 0);
-	prim2flux(primR2, conR2, fluxR2, 1);
-	prim2flux(primR3, conR3, fluxR3, 2);
-	prim2src(primL1, conL1, srcL1);
-	prim2src(primL2, conL2, srcL2);
-	prim2src(primL3, conL3, srcL3);
-	prim2src(primR1, conR1, srcR1);
-	prim2src(primR2, conR2, srcR2);
-	prim2src(primR3, conR3, srcR3);
-	prim2c(primL1, cpL1, metricFuncHalfField1, 1, 0);
-	prim2c(primL2, cpL2, metricFuncHalfField2, 1, 1);
-	prim2c(primL3, cpL3, metricFuncHalfField3, 1, 2);
-	prim2c(primR1, cpR1, metricFuncHalfField1, 1, 0);
-	prim2c(primR2, cpR2, metricFuncHalfField2, 1, 1);
-	prim2c(primR3, cpR3, metricFuncHalfField3, 1, 2);
-	prim2c(primL1, cnL1, metricFuncHalfField1, -1, 0);
-	prim2c(primL2, cnL2, metricFuncHalfField2, -1, 1);
-	prim2c(primL3, cnL3, metricFuncHalfField3, -1, 2);
-	prim2c(primR1, cnR1, metricFuncHalfField1, -1, 0);
-	prim2c(primR2, cnR2, metricFuncHalfField2, -1, 1);
-	prim2c(primR3, cnR3, metricFuncHalfField3, -1, 2);
-	calFluxHHL(cpL1, cpR1, cnL1, cnR1, conL1, conR1, fluxL1, fluxR1, fluxHLL1);
-	calFluxHHL(cpL2, cpR2, cnL2, cnR2, conL2, conR2, fluxL2, fluxR2, fluxHLL2);
-	calFluxHHL(cpL3, cpR3, cnL3, cnR3, conL3, conR3, fluxL3, fluxR3, fluxHLL3);
-	calFluxTVDLF(cpL1, cpR1, cnL1, cnR1, conL1, conR1, fluxL1, fluxR1, fluxTVDLF1);
-	calFluxTVDLF(cpL2, cpR2, cnL2, cnR2, conL2, conR2, fluxL2, fluxR2, fluxTVDLF2);
-	calFluxTVDLF(cpL3, cpR3, cnL3, cnR3, conL3, conR3, fluxL3, fluxR3, fluxTVDLF3);
-	fluxLLF1 = theta * fluxHLL1 + (1 - theta) * fluxTVDLF1;
-	fluxLLF2 = theta * fluxHLL2 + (1 - theta) * fluxTVDLF2;
-	fluxLLF3 = theta * fluxHLL3 + (1 - theta) * fluxTVDLF3;
+	{
+		thread th1(basicCalc, primL1, ref(conL1), ref(fluxL1), ref(srcL1), ref(cpL1), ref(cnL1), ref(metricFuncHalfField1), 0);
+		thread th2(basicCalc, primL2, ref(conL2), ref(fluxL2), ref(srcL2), ref(cpL2), ref(cnL2), ref(metricFuncHalfField2), 1);
+		thread th3(basicCalc, primL3, ref(conL3), ref(fluxL3), ref(srcL3), ref(cpL3), ref(cnL3), ref(metricFuncHalfField3), 2);
+		thread th4(basicCalc, primR1, ref(conR1), ref(fluxR1), ref(srcR1), ref(cpR1), ref(cnR1), ref(metricFuncHalfField1), 0);
+		thread th5(basicCalc, primR2, ref(conR2), ref(fluxR2), ref(srcR2), ref(cpR2), ref(cnR2), ref(metricFuncHalfField2), 1);
+		thread th6(basicCalc, primR3, ref(conR3), ref(fluxR3), ref(srcR3), ref(cpR3), ref(cnR3), ref(metricFuncHalfField3), 2);
+		th1.join();
+		th2.join();
+		th3.join();
+		th4.join();
+		th5.join();
+		th6.join();
+	}
+	{
+		thread th1(fluxCalc, cpL1, cpR1, cnL1, cnR1, conL1, conR1, fluxL1, fluxR1, ref(fluxHLL1), ref(fluxTVDLF1));
+		thread th2(fluxCalc, cpL2, cpR2, cnL2, cnR2, conL2, conR2, fluxL2, fluxR2, ref(fluxHLL2), ref(fluxTVDLF2));
+		thread th3(fluxCalc, cpL3, cpR3, cnL3, cnR3, conL3, conR3, fluxL3, fluxR3, ref(fluxHLL3), ref(fluxTVDLF3));
+		th1.join();
+		th2.join();
+		th3.join();
+	}
 	Tensor<double, 4> fluxSmoothLLF1 = fluxLLF1;
 	Tensor<double, 4> fluxSmoothLLF2 = fluxLLF2;
 	Tensor<double, 4> fluxSmoothLLF3 = fluxLLF3;
@@ -605,6 +587,7 @@ int main()
 				auto c2 = max(c2max, c2min);
 				auto c3 = max(c3max, c3min);
 				auto Delta_t = min(L1 / (2 * n1 * c1), L2 / (2 * n2 * c2), L3 / (2 * n3 * c3));
+				#pragma omp parallel
 				for (int l = 0; l < nComp; l++)
 					con(i, j, k, l) = conHalf(i, j, k, l) + src(i, j, k, l)
 					- Delta_t / (2 * L1 / n1) * (sqrt(metricFuncField(i + 1, j, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxSmoothLLF1(i + 1, j, k, l) - fluxLLF1(i, j, k, l))
