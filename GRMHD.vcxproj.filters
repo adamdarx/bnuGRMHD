@@ -18,5 +18,13 @@
     <ClCompile Include="eigen_test.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Metric.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Metric.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
