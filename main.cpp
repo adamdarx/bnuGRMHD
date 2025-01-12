@@ -3,10 +3,8 @@ bnuGRMHD ©️ 2024
 Date: 2024/12/21
 本文件是初代GRMHD的示例代码
 TODO:
-	1) 目前来说10x10x1的网格
-	2)
-	3)
-	4)
+	1) 目前来说10x10x1的网格能达到0.4s迭代一次
+	2) 初始化问题没有解决
 */
 
 #include <iostream>
@@ -279,8 +277,9 @@ int main()
 			};
 
 		auto con2prim = [n1, n2, n3, nGhost, adiabaticIndex, &metricFuncField](Tensor<double, 4> con, Tensor<double, 4>& prim) {
-			auto max_iter = 5;
+			auto max_iter = 3;
 			auto tol = 0.01;
+#pragma omp parallel num_threads(2)
 			for (int i = 0; i < n1; i++)
 			{
 				for (int j = 0; j < n2; j++)
@@ -501,7 +500,9 @@ int main()
 		// 4.半步长迭代
 		prim2con(prim, con);
 		prim2src(prim, con, src);
+#pragma omp parallel num_threads(2)
 		for (int i = 0; i < n1; i++)
+		{
 			for (int j = 0; j < n2; j++)
 				for (int k = 0; k < n3; k++)
 				{
@@ -515,14 +516,13 @@ int main()
 					auto c2 = max(c2max, c2min);
 					auto c3 = max(c3max, c3min);
 					auto Delta_t = min(L1 / (2 * n1 * c1), L2 / (2 * n2 * c2), L3 / (2 * n3 * c3));
-					#pragma omp parallel
 					for (int l = 0; l < nComp; l++)
-						// TODO: gamma存在半步长和整步长问题
 						conHalf(i, j, k, l) = con(i, j, k, l) + src(i, j, k, l)
 						- Delta_t / (2 * L1 / n1) * (sqrt(metricFuncHalfField1(i + 1, j, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF1(i + 1, j, k, l) - fluxLLF1(i, j, k, l))
 						- Delta_t / (2 * L2 / n2) * (sqrt(metricFuncHalfField2(i, j + 1, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF2(i, j + 1, k, l) - fluxLLF1(i, j, k, l))
 						- Delta_t / (2 * L3 / n3) * (sqrt(metricFuncHalfField3(i, j, k + 1).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxLLF3(i, j, k + 1, l) - fluxLLF1(i, j, k, l));
 				}
+		}
 		con2prim(conHalf, primHalf);
 		interpolate(primHalf);
 		{
@@ -553,7 +553,9 @@ int main()
 		/*
 		5) 平滑化
 		*/
+#pragma omp parallel num_threads(2)
 		for (int i = 1; i < n1 - 1; i++)
+		{
 			for (int j = 1; j < n2 - 1; j++)
 				for (int k = 1; k < n3 - 1; k++)
 				{
@@ -564,10 +566,13 @@ int main()
 					fluxSmoothLLF2(i, j, k, 7) = 0.125 * (2 * fluxLLF2(i, j, k, 7) + fluxLLF2(i, j, k + 1, 7) + fluxLLF2(i, j, k - 1, 7) - fluxLLF3(i, j, k, 6) - fluxLLF3(i, j, k + 1, 6) - fluxLLF3(i, j - 1, k, 6) - fluxLLF3(i, j - 1, k + 1, 6));
 					fluxSmoothLLF3(i, j, k, 6) = 0.125 * (2 * fluxLLF3(i, j, k, 6) + fluxLLF3(i, j + 1, k, 6) + fluxLLF3(i, j - 1, k, 6) - fluxLLF2(i, j, k, 7) - fluxLLF2(i, j + 1, k, 7) - fluxLLF2(i, j, k - 1, 7) - fluxLLF2(i, j + 1, k - 1, 7));
 				}
+		}
 		/*
 		6) 整步迭代
 		*/
+#pragma omp parallel num_threads(2)
 		for (int i = 0; i < n1; i++)
+		{
 			for (int j = 0; j < n2; j++)
 				for (int k = 0; k < n3; k++)
 				{
@@ -581,13 +586,13 @@ int main()
 					auto c2 = max(c2max, c2min);
 					auto c3 = max(c3max, c3min);
 					auto Delta_t = min(L1 / (2 * n1 * c1), L2 / (2 * n2 * c2), L3 / (2 * n3 * c3));
-					#pragma omp parallel
 					for (int l = 0; l < nComp; l++)
 						con(i, j, k, l) = conHalf(i, j, k, l) + src(i, j, k, l)
 						- Delta_t / (2 * L1 / n1) * (sqrt(metricFuncField(i + 1, j, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxSmoothLLF1(i + 1, j, k, l) - fluxLLF1(i, j, k, l))
 						- Delta_t / (2 * L2 / n2) * (sqrt(metricFuncField(i, j + 1, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxSmoothLLF2(i, j + 1, k, l) - fluxLLF1(i, j, k, l))
 						- Delta_t / (2 * L3 / n3) * (sqrt(metricFuncField(i, j, k + 1).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxSmoothLLF3(i, j, k + 1, l) - fluxLLF1(i, j, k, l));
 				}
+		}
 		con2prim(con, prim);
 		totalTime += clock() - start;
 		std::cout << "Time(ms): " << clock() - start << std::endl;

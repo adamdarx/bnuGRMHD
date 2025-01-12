@@ -132,7 +132,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="eigen_test.cpp" />
+    <ClCompile Include="main.cpp" />
     <ClCompile Include="Metric.cpp" />
   </ItemGroup>
   <ItemGroup>
