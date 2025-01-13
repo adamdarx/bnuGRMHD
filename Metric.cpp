@@ -15,10 +15,10 @@ Metric::Metric(Eigen::Matrix4d metric) : m(metric)
 
 double Metric::alpha()
 {
-	return sqrt(this->beta().transpose() * this->gamma() * this->beta() - m(0, 0));
+	return sqrt(this->betaVec().transpose() * this->gamma() * this->betaVec() - m(0, 0));
 }
 
-Eigen::Vector3d Metric::beta()
+Eigen::Vector3d Metric::betaVec()
 {
 	return m(0, Eigen::seqN(1, 3));
 }

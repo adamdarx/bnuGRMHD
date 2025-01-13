@@ -13,7 +13,7 @@ public:
 	Metric();
 	Metric(Eigen::Matrix4d metric);
 	double alpha();
-	Eigen::Vector3d beta();
+	Eigen::Vector3d betaVec();
 	Eigen::Matrix3d gamma();
 	~Metric();
 };

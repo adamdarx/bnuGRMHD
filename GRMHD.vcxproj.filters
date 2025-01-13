@@ -21,9 +21,15 @@
     <ClCompile Include="Metric.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="init.h">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Metric.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="utils.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
