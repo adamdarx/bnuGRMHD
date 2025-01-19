@@ -89,10 +89,10 @@ double compute_B_from_A(double A[N1 + 1][N2 + 1][N3 + 1]) {
     for (int i = 1; i < N1; i++) {
         for (int j = 1; j < N2; j++) {
             for (int k = 0; k < N3; k++) {
-                primInit[i][j][k][B1] = (gdet_mks[i - 1][j][k] * A[i - 1][j][k] - gdet_mks[i - 1][j - 1][k] * A[i - 1][j - 1][k] +
-                    gdet_mks[i][j][k] * A[i][j][k] - gdet_mks[i][j - 1][k] * A[i][j - 1][k]) / (2. * dx2 * gdet_mks[i][j][k]);
-                primInit[i][j][k][B2] = -(gdet_mks[i][j - 1][k] * A[i][j - 1][k] - gdet_mks[i - 1][j - 1][k] * A[i - 1][j - 1][k] +
-                    gdet_mks[i][j][k] * A[i][j][k] - gdet_mks[i - 1][j][k] * A[i - 1][j][k]) / (2. * dx1 * gdet_mks[i][j][k]);
+                primInit[i][j][k][B1] = (A[i - 1][j][k] - A[i - 1][j - 1][k] +
+                    A[i][j][k] - A[i][j - 1][k]) / (2. * dx2 * gdet_mks[i][j][k]);
+                primInit[i][j][k][B2] = -(A[i][j - 1][k] - A[i - 1][j - 1][k] +
+                    A[i][j][k] - A[i - 1][j][k]) / (2. * dx1 * gdet_mks[i][j][k]);
                 primInit[i][j][k][B3] = 0.;
                 r = BL_coord1[i][j][k];
                 if (r >= rin) {
