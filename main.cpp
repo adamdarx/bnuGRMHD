@@ -71,13 +71,61 @@ int main()
 						metricFuncHalfField2(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + 2) * dx1, X2min + (2 * i + 3) * dx2 / 2, X3min + (k + 2) * dx3);
 						metricFuncHalfField3(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + 2) * dx1, X2min + (j + 2) * dx2, X3min + (2 * k + 3) * dx3 / 2);
 					}
+	// 主要量，对应传统GRMHD方程中的P(带鬼格)
 	prim.setZero();
+	primHalf.setZero();
+	primL1.setZero();
+	primL2.setZero();
+	primL3.setZero();
+	primR1.setZero();
+	primR2.setZero();
+	primR3.setZero();
+	// 守恒量，对应传统GRMHD方程中的U(带鬼格)
+	con.setZero();
+	conHalf.setZero();
+	conL1.setZero();
+	conL2.setZero();
+	conL3.setZero();
+	conR1.setZero();
+	conR2.setZero();
+	conR3.setZero();
+	// 流(flux)
+	fluxL1.setZero();
+	fluxL2.setZero();
+	fluxL3.setZero();
+	fluxR1.setZero();
+	fluxR2.setZero();
+	fluxR3.setZero();
+	// HHL流
+	fluxHLL1.setZero();
+	fluxHLL2.setZero();
+	fluxHLL3.setZero();
+	// TVDLF流
+	fluxTVDLF1.setZero();
+	fluxTVDLF2.setZero();
+	fluxTVDLF3.setZero();
+	// 源(source)
+	src.setZero();
+	srcL1.setZero();
+	srcL2.setZero();
+	srcL3.setZero();
+	srcR1.setZero();
+	srcR2.setZero();
+	srcR3.setZero();
+	// 特征速度(c_+)
 	cpL1.setZero();
 	cpL2.setZero();
 	cpL3.setZero();
 	cpR1.setZero();
 	cpR2.setZero();
 	cpR3.setZero();
+	// 特征速度(c_-)
+	cnL1.setZero();
+	cnL2.setZero();
+	cnL3.setZero();
+	cnR1.setZero();
+	cnR2.setZero();
+	cnR3.setZero();
 	init();
 	for (int i = 0; i < N1; i++)
 		for(int j = 0; j < N2; j++)
@@ -106,7 +154,7 @@ int main()
 	1)鬼化
 		分成两边分别鬼化
 	*/
-	for(int epoch = 0; epoch < 100; epoch++)
+	for(int epoch = 0; epoch < 2; epoch++)
 	{
 		auto start = clock();
 		for (int i = NG - 1; i >= 0; i--)
@@ -136,7 +184,6 @@ int main()
 					prim(i + 1, j + 1, k + 1, B3) = prim(i, j, k, B3) * (1 - sqrt(pow(dx1, 2) + pow(dx2, 2) + pow(dx3, 2)) / sqrt(pow(X1min + i * dx1, 2) + pow(X2min + i * dx2, 2) + pow(X3min + i * dx3, 2)));
 					prim(i + 1, j + 1, k + 1, U1) = prim(i, j, k, U1) * (1 + sqrt(pow(dx1, 2) + pow(dx2, 2) + pow(dx3, 2)) / sqrt(pow(X1min + i * dx1, 2) + pow(X2min + i * dx2, 2) + pow(X3min + i * dx3, 2)));
 				}
-
 		interpolate(prim);
 		// 可并发
 		{
@@ -215,9 +262,9 @@ int main()
 					src(i, j, k, 7) = 0;
 				}
 #pragma omp parallel num_threads(2)
-		for (int i = 0; i < N1; i++)
-			for (int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
+		for (int i = 0; i < N1 - 1; i++)
+			for (int j = 0; j < N2 - 1; j++)
+				for (int k = 0; k < N3 - 1; k++)
 				{
 					auto c1max = max(0, cpR1(i, j, k), cpL1(i, j, k));
 					auto c1min = -min(0, cnR1(i, j, k), cnL1(i, j, k));
@@ -228,7 +275,7 @@ int main()
 					auto c1 = max(c1max, c1min);
 					auto c2 = max(c2max, c2min);
 					auto c3 = max(c3max, c3min);
-					auto Delta_t = min(dx1 / (2 * c1), dx2 / (2 * c2), dx3 / (2 * c3));
+					auto Delta_t = max(min(dx1 / (2 * c1), dx2 / (2 * c2), dx3 / (2 * c3)), 0);
 					for (int l = 0; l < 8; l++)
 						conHalf(i, j, k, l) = con(i, j, k, l) + src(i, j, k, l)
 						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField1(i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1(i + 1, j, k, l) - fluxLLF1(i, j, k, l))
@@ -272,19 +319,17 @@ int main()
 				{
 					fluxSmoothLLF1(i, j, k, 6) = 0.125 * (2 * fluxLLF1(i, j, k, 6) + fluxLLF1(i, j + 1, k, 6) + fluxLLF1(i, j - 1, k, 6) - fluxLLF2(i, j, k, 5) - fluxLLF2(i, j + 1, k, 5) - fluxLLF2(i - 1, j, k, 5) - fluxLLF2(i - 1, j + 1, k, 5));
 					fluxSmoothLLF2(i, j, k, 5) = 0.125 * (2 * fluxLLF2(i, j, k, 5) + fluxLLF2(i + 1, j, k, 5) + fluxLLF2(i - 1, j, k, 5) - fluxLLF1(i, j, k, 6) - fluxLLF1(i + 1, j, k, 6) - fluxLLF1(i, j - 1, k, 6) - fluxLLF1(i + 1, j - 1, k, 6));
-					fluxSmoothLLF1(i, j, k, 7) = 0.125 * (2 * fluxLLF1(i, j, k, 7) + fluxLLF1(i, j, k + 1, B3) + fluxLLF1(i, j, k - 1, 7) - fluxLLF3(i, j, k, 5) - fluxLLF3(i, j, k + 1, B1) - fluxLLF3(i - 1, j, k, 5) - fluxLLF3(i - 1, j, k + 1, B1));
+					fluxSmoothLLF1(i, j, k, 7) = 0.125 * (2 * fluxLLF1(i, j, k, 7) + fluxLLF1(i, j, k + 1, 7) + fluxLLF1(i, j, k - 1, 7) - fluxLLF3(i, j, k, 5) - fluxLLF3(i, j, k + 1, 7) - fluxLLF3(i - 1, j, k, 5) - fluxLLF3(i - 1, j, k + 1, 7));
 					fluxSmoothLLF3(i, j, k, 5) = 0.125 * (2 * fluxLLF3(i, j, k, 5) + fluxLLF3(i + 1, j, k, 5) + fluxLLF3(i - 1, j, k, 5) - fluxLLF1(i, j, k, 7) - fluxLLF1(i + 1, j, k, 7) - fluxLLF1(i, j, k - 1, 7) - fluxLLF1(i + 1, j, k - 1, 7));
-					fluxSmoothLLF2(i, j, k, 7) = 0.125 * (2 * fluxLLF2(i, j, k, 7) + fluxLLF2(i, j, k + 1, B3) + fluxLLF2(i, j, k - 1, 7) - fluxLLF3(i, j, k, 6) - fluxLLF3(i, j, k + 1, B2) - fluxLLF3(i, j - 1, k, 6) - fluxLLF3(i, j - 1, k + 1, B2));
+					fluxSmoothLLF2(i, j, k, 7) = 0.125 * (2 * fluxLLF2(i, j, k, 7) + fluxLLF2(i, j, k + 1, 7) + fluxLLF2(i, j, k - 1, 7) - fluxLLF3(i, j, k, 6) - fluxLLF3(i, j, k + 1, 7) - fluxLLF3(i, j - 1, k, 6) - fluxLLF3(i, j - 1, k + 1, 7));
 					fluxSmoothLLF3(i, j, k, 6) = 0.125 * (2 * fluxLLF3(i, j, k, 6) + fluxLLF3(i, j + 1, k, 6) + fluxLLF3(i, j - 1, k, 6) - fluxLLF2(i, j, k, 7) - fluxLLF2(i, j + 1, k, 7) - fluxLLF2(i, j, k - 1, 7) - fluxLLF2(i, j + 1, k - 1, 7));
 				}
 		/*
 		6) 整步迭代
 		*/
-#pragma omp parallel num_threads(2)
-		for (int i = 0; i < N1; i++)
-		{
-			for (int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
+		for (int i = 0; i < N1 - 1; i++)
+			for (int j = 0; j < N2 - 1; j++)
+				for (int k = 0; k < N3 - 1; k++)
 				{
 					auto c1max = max(0, cpR1(i, j, k), cpL1(i, j, k));
 					auto c1min = -min(0, cnR1(i, j, k), cnL1(i, j, k));
@@ -295,18 +340,16 @@ int main()
 					auto c1 = max(c1max, c1min);
 					auto c2 = max(c2max, c2min);
 					auto c3 = max(c3max, c3min);
-					auto Delta_t = min(dx1 / (2 * c1), dx2 / (2 * c2), dx3 / (2 * c3));
+					auto Delta_t = max(min(dx1 / (2 * c1), dx2 / (2 * c2), dx3 / (2 * c3)), 0);
 					for (int l = 0; l < 8; l++)
 						con(i, j, k, l) = conHalf(i, j, k, l) + src(i, j, k, l)
-						- Delta_t / (2 * dx1) * (sqrt(metricFuncField(i + 1, j, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxSmoothLLF1(i + 1, j, k, l) - fluxLLF1(i, j, k, l))
-						- Delta_t / (2 * dx2) * (sqrt(metricFuncField(i, j + 1, k).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxSmoothLLF2(i, j + 1, k, l) - fluxLLF1(i, j, k, l))
-						- Delta_t / (2 * dx3) * (sqrt(metricFuncField(i, j, k + 1).gamma().determinant() / metricFuncField(i, j, k).gamma().determinant()) * fluxSmoothLLF3(i, j, k + 1, l) - fluxLLF1(i, j, k, l));
+						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField1(i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1(i + 1, j, k, l) - fluxLLF1(i, j, k, l))
+						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField2(i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2(i, j + 1, k, l) - fluxLLF1(i, j, k, l))
+						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField3(i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF3(i, j, k + 1, l) - fluxLLF1(i, j, k, l));
 				}
-		}
 		//con2prim(prim具有鬼格)
-		auto max_iter = 5;
+		auto max_iter = 0;
 		auto tol = 0.01;
-#pragma omp parallel num_threads(2)
 		for (int i = 0; i < N1; i++)
 		{
 			for (int j = 0; j < N2; j++)
@@ -325,7 +368,7 @@ int main()
 							break;
 						x0 = x1;
 					}
-					auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x0) / pow(x0 + square(i, j, k, B), 2));
+					auto Gamma = 1 / sqrt(abs(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x0) / pow(x0 + square(i, j, k, B), 2)));
 					prim(i + NG, j + NG, k + NG, RHO) = D / Gamma;
 					prim(i + NG, j + NG, k + NG, UU) = (gam - 1) / gam * (x0 - Gamma * D) / pow(Gamma, 2);
 					prim(i + NG, j + NG, k + NG, U1) = (S(0) + dot(i, j, k, S, B) * B(0) / x0) / (x0 + square(i, j, k, B));
@@ -338,7 +381,6 @@ int main()
 			}
 		}
 		fix(prim);
-		print(prim);
 		totalTime += clock() - start;
 		std::cout << "Time(ms): " << clock() - start << std::endl;
 		if (epoch % 10 == 0) {

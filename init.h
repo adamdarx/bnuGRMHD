@@ -126,9 +126,9 @@ void fix(double primInit[N1][N2][N3][NPRIM]) {
 
 void fix(Eigen::Tensor<double, 4> prim) {
     double r, rho_floor, ug_floor, bsq, sigma;
-    for (int i = 1; i < N1; i++) {
-        for (int j = 1; j < N2; j++) {
-            for (int k = 1; k < N3; k++) {
+    for (int i = 0; i < N1; i++) {
+        for (int j = 0; j < N2; j++) {
+            for (int k = 0; k < N3; k++) {
                 r = BL_coord1[i][j][k];
                 rho_floor = RHOMIN * pow(r, -3. / 2.);
                 ug_floor = UUMIN * pow(r, -3. / 2. * gam);
