@@ -6,7 +6,6 @@ TODO:
 	1) 目前来说10x10x1的网格能达到0.4s迭代一次
 	2) 初始化问题没有解决
 */
-
 #include <iostream>
 #include <vector>
 #include <thread>
@@ -15,6 +14,7 @@ TODO:
 #include "Metric.h"
 #include "utils.h"
 #include "init.h"
+#include "metric/mks.h"
 
 
 using std::thread;
@@ -36,15 +36,7 @@ int main()
 		创建Eigen::Tensor<MetricComponent, 2>对象，每一个分量本质都是一个函数（类型为MetricComponent，数学地写就是R^3->R的映射定义见Metric.h）
 		默认全为零分量（注意不是double 0而是预先定义的ZERO_COMPONENT，定义见Metric.h）
 	*/
-	metricFunc.setConstant(ZERO_COMPONENT);
-	metricDiff.setConstant(ZERO_COMPONENT);
-	metricFunc(0, 0) = [](double x1, double x2, double x3) {return -1 + 2 * M / x1; };
-	metricFunc(1, 1) = [](double x1, double x2, double x3) {return 1 - 2 * M / x1; };
-	metricFunc(2, 2) = [](double x1, double x2, double x3) {return x1 * x1; };
-	metricFunc(3, 3) = [](double x1, double x2, double x3) {return pow(x1 * sin(x2), 2); };
-	metricDiff(0, 0, 1) = [](double x1, double x2, double x3) {return -M / pow(x1, 2); };
-	metricDiff(1, 1, 1) = [](double x1, double x2, double x3) {return M / pow(x1, 2); };
-
+	init_metric();
 
 	for (int i = 0; i < N1 + 2 * NG; i++)
 		for (int j = 0; j < N2 + 2 * NG; j++)
@@ -381,6 +373,7 @@ int main()
 			}
 		}
 		fix(prim);
+		print(prim);
 		totalTime += clock() - start;
 		std::cout << "Time(ms): " << clock() - start << std::endl;
 		if (epoch % 10 == 0) {

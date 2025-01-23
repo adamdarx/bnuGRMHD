@@ -17,5 +17,3 @@ public:
 	Eigen::Matrix3d gamma();
 	~Metric();
 };
-
-const MetricComponent ZERO_COMPONENT = [](double x, double y, double z) {return 0; };	// ¡„∑÷¡ø

@@ -1,24 +1,26 @@
 #pragma once
 #include "omp.h"
+#include "Metric.h"
+#include <iostream>
 #include <unsupported/Eigen/CXX11/Tensor>
 
-constexpr auto theta = 0.5;								// HHL流和TVDLF流混合参数
-constexpr auto M = (1);
+const MetricComponent ZERO_COMPONENT = [](double x, double y, double z) {return 0; };	// 零分量
 constexpr auto a = (0.9375);
+constexpr auto h = (0.);
+constexpr auto theta = 0.5;								// HHL流和TVDLF流混合参数
 constexpr auto NDIM = (4);
 constexpr auto N1 = (16);
 constexpr auto N2 = (8);
 constexpr auto N3 = (8);
 constexpr auto NG = (2);
 constexpr auto PI = (3.14159265358979323846);
-constexpr auto X1min = (1.19325057145871735);
-constexpr auto X1max = (12.824046010856292);
+constexpr auto X1min = (2.19325057145871735);
+constexpr auto X1max = (16.824046010856292);
 constexpr auto X2min = (1.e-16);
 constexpr auto X2max = (1. * PI);
 constexpr auto X3min = (1.e-16);
 constexpr auto X3max = (2. * PI);
 constexpr auto R0 = (0.);
-constexpr auto h = (0.);
 constexpr auto SMALL = (1.e-16);
 
 //FM_torus disk parameter
@@ -219,7 +221,6 @@ void prim2con(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 4>& con) {
 				Eigen::Vector3d v{ prim(i, j, k, U1) ,prim(i, j, k, U2) ,prim(i, j, k, U3) };
 				Eigen::Vector3d B{ prim(i, j, k, B1) ,prim(i, j, k, B2) ,prim(i, j, k, B3) };
 				double Gamma = 1 / sqrt(1 - square(i, j, k, v));
-				print(square(i, j, k, v));
 				con(i, j, k, 0) = Gamma * prim(i, j, k, RHO);
 				con(i, j, k, 1) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) - prim(i, j, k, UU) + 0.5 * (square(i, j, k, B) * (1 + square(i, j, k, v) - pow(dot(i, j, k, B, v), 2))) - Gamma * prim(i, j, k, RHO);
 				con(i, j, k, 2) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) * prim(i, j, k, U1) + square(i, j, k, B) * prim(i, j, k, U1) - dot(i, j, k, B, v) * prim(i, j, k, B1);
@@ -282,7 +283,7 @@ void con2prim(Eigen::Tensor<double, 4> con, Eigen::Tensor<double, 4>& prim) {
 						break;
 					x0 = x1;
 				}
-				auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x0) / pow(x0 + square(i, j, k, B), 2));
+				auto Gamma = 1 / sqrt(abs(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x0) / pow(x0 + square(i, j, k, B), 2)));
 				prim(i, j, k, RHO) = D / Gamma;
 				prim(i, j, k, UU) = (gam - 1) / gam * (x0 - Gamma * D) / pow(Gamma, 2);
 				prim(i, j, k, U1) = (S(0) + dot(i, j, k, S, B) * B(0) / x0) / (x0 + square(i, j, k, B));
