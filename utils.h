@@ -9,12 +9,12 @@ constexpr auto a = (0.9375);
 constexpr auto h = (0.);
 constexpr auto theta = 0.5;								// HHL流和TVDLF流混合参数
 constexpr auto NDIM = (4);
-constexpr auto N1 = (16);
-constexpr auto N2 = (8);
-constexpr auto N3 = (8);
+constexpr auto N1 = (5);
+constexpr auto N2 = (2);
+constexpr auto N3 = (2);
 constexpr auto NG = (2);
 constexpr auto PI = (3.14159265358979323846);
-constexpr auto X1min = (2.19325057145871735);
+constexpr auto X1min = (0.19325057145871735);
 constexpr auto X1max = (16.824046010856292);
 constexpr auto X2min = (1.e-16);
 constexpr auto X2max = (1. * PI);
@@ -38,6 +38,9 @@ double Xgrid3[N1][N2][N3];
 double dx1 = (X1max - X1min) / N1;
 double dx2 = (X2max - X2min) / N2;
 double dx3 = (X3max - X3min) / N3;
+double dx1_ghost = (X1max - X1min) / (N1 + 2 * NG);
+double dx2_ghost = (X2max - X2min) / (N2 + 2 * NG);
+double dx3_ghost = (X3max - X3min) / (N3 + 2 * NG);
 //KS grid
 double KS_coord1[N1][N2][N3];
 double KS_coord2[N1][N2][N3];
@@ -88,7 +91,8 @@ constexpr auto SIGMAMAX = (50.);
 Eigen::Tensor<MetricComponent, 2> metricFunc(4, 4);												// 度规张量(0,2)型
 Eigen::Tensor<MetricComponent, 3> metricDiff(4, 4, 4);												// 度规张量导数
 Eigen::Tensor<Metric, 3> metricFuncField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG);					// 度规场(0,2)型
-Eigen::Tensor<Metric, 4> metricDiffField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG, 4);				// 度规导数场
+Eigen::Tensor<Metric, 4> metricDiffField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG, 4);					// 度规导数场
+Eigen::Tensor<double, 4> alphaDiffField(N1, N2, N3, 4);												// alpha导数场
 Eigen::Tensor<Metric, 3> metricFuncHalfField1(N1, N2, N3);											// 计算流时需要的半步长度规场(0,2)型
 Eigen::Tensor<Metric, 3> metricFuncHalfField2(N1, N2, N3);											// 计算流时需要的半步长度规场(0,2)型
 Eigen::Tensor<Metric, 3> metricFuncHalfField3(N1, N2, N3);											// 计算流时需要的半步长度规场(0,2)型
@@ -263,8 +267,7 @@ double df(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::V
 
 void con2prim(Eigen::Tensor<double, 4> con, Eigen::Tensor<double, 4>& prim) {
 	auto max_iter = 0;
-	auto tol = 0.01;
-#pragma omp parallel num_threads(2)
+	auto tol = 0.001;
 	for (int i = 0; i < N1; i++)
 	{
 		for (int j = 0; j < N2; j++)
@@ -275,15 +278,15 @@ void con2prim(Eigen::Tensor<double, 4> con, Eigen::Tensor<double, 4>& prim) {
 				Eigen::Vector3d B{ con(i, j, k, 5) ,con(i, j, k, 6) ,con(i, j, k, 7) };
 				auto D = con(i, j, k, 0);
 				auto tau = con(i, j, k, 1);
-				double x0 = 1e6;
+				double x0 = 1e16;
 				for (int iter = 0; iter < max_iter; iter++)
 				{
 					auto x1 = x0 - f(i, j, k, D, tau, S, B, x0) / df(i, j, k, D, tau, S, B, x0); // 牛顿迭代公式
-					if (abs(x1 - x0) < tol)
+					if (abs((x1 - x0) / x0) < tol)
 						break;
 					x0 = x1;
 				}
-				auto Gamma = 1 / sqrt(abs(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x0) / pow(x0 + square(i, j, k, B), 2)));
+				auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x0) / pow(x0 + square(i, j, k, B), 2));
 				prim(i, j, k, RHO) = D / Gamma;
 				prim(i, j, k, UU) = (gam - 1) / gam * (x0 - Gamma * D) / pow(Gamma, 2);
 				prim(i, j, k, U1) = (S(0) + dot(i, j, k, S, B) * B(0) / x0) / (x0 + square(i, j, k, B));
@@ -324,21 +327,25 @@ void prim2src(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 4> con, Eigen
 		for (int j = 0; j < N2; j++)
 			for (int k = 0; k < N3; k++)
 			{
-				Eigen::Vector3d v{ prim(i, j, k, U1) ,prim(i, j, k, U2) ,prim(i, j, k, U3) };
-				Eigen::Vector3d B{ prim(i, j, k, B1) ,prim(i, j, k, B2) ,prim(i, j, k, B3) };
+				Eigen::Vector3d v{ prim(i + NG, j + NG, k + NG, U1) ,prim(i + NG, j + NG, k + NG, U2) ,prim(i + NG, j + NG, k + NG, U3) };
+				Eigen::Vector3d B{ prim(i + NG, j + NG, k + NG, B1) ,prim(i + NG, j + NG, k + NG, B2) ,prim(i + NG, j + NG, k + NG, B3) };
 				Eigen::Vector3d S{ con(i, j, k, 2) ,con(i, j, k, 3) ,con(i, j, k, 4) };
 				Eigen::Matrix3d betaDiff;
-				betaDiff << metricDiffField(i, j, k, 1).betaVec()(0), metricDiffField(i, j, k, 2).betaVec()(0), metricDiffField(i, j, k, 3).betaVec()(0),
-					metricDiffField(i, j, k, 1).betaVec()(1), metricDiffField(i, j, k, 2).betaVec()(1), metricDiffField(i, j, k, 3).betaVec()(1),
-					metricDiffField(i, j, k, 1).betaVec()(2), metricDiffField(i, j, k, 2).betaVec()(2), metricDiffField(i, j, k, 3).betaVec()(2);
+				betaDiff << metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()(0), metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()(0), metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()(0),
+					metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()(1), metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()(1), metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()(1),
+					metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()(2), metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()(2), metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()(2);
 				double Gamma = 1 / sqrt(1 - square(i, j, k, v));
-				auto W = S * (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * v).transpose() + (prim(i, j, k, 1) + 0.5 * (square(i, j, k, B) * (1 - square(i, j, k, v)) + pow(dot(i, j, k, B, v), 2))) * metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, v) * v * B.transpose();
-				src(i, j, k, 1) = 0.5 * contract(W, (metricFuncField(i + NG, j + NG, k + NG).betaVec()(0) * metricDiffField(i, j, k, 1).gamma() + metricFuncField(i + NG, j + NG, k + NG).betaVec()(1) * metricDiffField(i, j, k, 2).gamma() + metricFuncField(i + NG, j + NG, k + NG).betaVec()(2) * metricDiffField(i, j, k, 3).gamma()))
+				Eigen::Matrix3d W = S * (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * v).transpose() + (prim(i + NG, j + NG, k + NG, UU) + 0.5 * (square(i, j, k, B) * (1 - square(i, j, k, v)) + pow(dot(i, j, k, B, v), 2))) * metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, v) * v * B.transpose();
+				src(i, j, k, 0) = 0;
+				src(i, j, k, 1) = 0.5 * contract(W, (metricFuncField(i + NG, j + NG, k + NG).betaVec()(0) * metricDiffField(i + NG, j + NG, k + NG, 1).gamma() + metricFuncField(i + NG, j + NG, k + NG).betaVec()(1) * metricDiffField(i + NG, j + NG, k + NG, 2).gamma() + metricFuncField(i + NG, j + NG, k + NG).betaVec()(2) * metricDiffField(i + NG, j + NG, k + NG, 3).gamma()))
 					+ contract(W * metricFuncField(i, j, k).gamma(), betaDiff)
-					- (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(0) * metricDiffField(i, j, k, 1).alpha() - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(1) * metricDiffField(i, j, k, 2).alpha() - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(2) * metricDiffField(i, j, k, 3).alpha();
-				src(i, j, k, 2) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i, j, k, 1).gamma()) + dot(i, j, k, S, metricDiffField(i, j, k, 1).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i, j, k, 1).alpha();
-				src(i, j, k, 3) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i, j, k, 2).gamma()) + dot(i, j, k, S, metricDiffField(i, j, k, 2).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i, j, k, 2).alpha();
-				src(i, j, k, 4) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i, j, k, 3).gamma()) + dot(i, j, k, S, metricDiffField(i, j, k, 3).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i, j, k, 3).alpha();
+					- (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(0) * alphaDiffField(i, j, k, 1) - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(1) * alphaDiffField(i, j, k, 2) - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(2) * alphaDiffField(i, j, k, 3);
+				src(i, j, k, 2) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 1).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * alphaDiffField(i, j, k, 1);
+				src(i, j, k, 3) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 2).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * alphaDiffField(i, j, k, 2);
+				src(i, j, k, 4) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 3).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * alphaDiffField(i, j, k, 3);
+				src(i, j, k, 5) = 0;
+				src(i, j, k, 6) = 0;
+				src(i, j, k, 7) = 0;
 			}
 	}
 
@@ -414,4 +421,13 @@ void basicCalc(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 4>& con, Eig
 void fluxCalc(Eigen::Tensor<double, 3> cpL, Eigen::Tensor<double, 3> cpR, Eigen::Tensor<double, 3> cnL, Eigen::Tensor<double, 3> cnR, Eigen::Tensor<double, 4> conL, Eigen::Tensor<double, 4> conR, Eigen::Tensor<double, 4> fluxL, Eigen::Tensor<double, 4> fluxR, Eigen::Tensor<double, 4>& fluxHLL, Eigen::Tensor<double, 4>& fluxTVDLF) {
 	calFluxHHL(cpL, cpR, cnL, cnR, conL, conR, fluxL, fluxR, fluxHLL);
 	calFluxTVDLF(cpL, cpR, cnL, cnR, conL, conR, fluxL, fluxR, fluxTVDLF);
+}
+
+void check(Eigen::Tensor<double, 4> arr) {
+	for(int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for(int l = 0; l < 8; l++)
+					std::cout << "i: " << i << "\tj: " << j << "\tk: " << k << "\tValue: " << arr(i, j, k, l) << std::endl;
+	return;
 }

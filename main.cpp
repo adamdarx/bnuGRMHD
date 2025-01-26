@@ -37,32 +37,6 @@ int main()
 		默认全为零分量（注意不是double 0而是预先定义的ZERO_COMPONENT，定义见Metric.h）
 	*/
 	init_metric();
-
-	for (int i = 0; i < N1 + 2 * NG; i++)
-		for (int j = 0; j < N2 + 2 * NG; j++)
-			for (int k = 0; k < N3 + 2 * NG; k++)
-				for(int row = 0; row < 4; row++)
-					for (int col = 0; col < 4; col++)
-						metricFuncField(i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + i * dx2, X3min + i * dx3);
-	
-	for (int i = 0; i < N1 + 2 * NG; i++)
-		for (int j = 0; j < N2 + 2 * NG; j++)
-			for (int k = 0; k < N3 + 2 * NG; k++)
-				for (int l = 0; l < 4; l++)
-					for (int row = 0; row < 4; row++)
-						for (int col = 0; col < 4; col++)
-							metricDiffField(i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1, X2min + i * dx2, X3min + i * dx3);
-	
-	for (int i = 0; i < N1; i++)
-		for (int j = 0; j < N2; j++)
-			for (int k = 0; k < N3; k++)
-				for (int row = 0; row < 4; row++)
-					for (int col = 0; col < 4; col++)
-					{
-						metricFuncHalfField1(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i + 3) * dx1 / 2, X2min + (j + 2) * dx2, X3min + (k + 2) * dx3);
-						metricFuncHalfField2(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + 2) * dx1, X2min + (2 * i + 3) * dx2 / 2, X3min + (k + 2) * dx3);
-						metricFuncHalfField3(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + 2) * dx1, X2min + (j + 2) * dx2, X3min + (2 * k + 3) * dx3 / 2);
-					}
 	// 主要量，对应传统GRMHD方程中的P(带鬼格)
 	prim.setZero();
 	primHalf.setZero();
@@ -118,6 +92,42 @@ int main()
 	cnR1.setZero();
 	cnR2.setZero();
 	cnR3.setZero();
+	alphaDiffField.setZero();
+
+	for (int i = 0; i < N1 + 2 * NG; i++)
+		for (int j = 0; j < N2 + 2 * NG; j++)
+			for (int k = 0; k < N3 + 2 * NG; k++)
+				for(int row = 0; row < 4; row++)
+					for (int col = 0; col < 4; col++)
+						metricFuncField(i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1_ghost, X2min + j * dx2_ghost, X3min + k * dx3_ghost);
+	// 利用中心差分计算alpha的导数
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+			{
+				alphaDiffField(i, j, k, 0) = 0;
+				alphaDiffField(i, j, k, 1) = (metricFuncField(i + NG + 1, j + NG, k + NG).alpha() - metricFuncField(i + NG - 1, j + NG, k + NG).alpha()) / (2 * dx1);
+				alphaDiffField(i, j, k, 2) = (metricFuncField(i + NG, j + NG + 1, k + NG).alpha() - metricFuncField(i + NG, j + NG - 1, k + NG).alpha()) / (2 * dx2);
+				alphaDiffField(i, j, k, 3) = (metricFuncField(i + NG, j + NG, k + NG + 1).alpha() - metricFuncField(i + NG, j + NG, k + NG - 1).alpha()) / (2 * dx3);
+			}
+	for (int i = 0; i < N1 + 2 * NG; i++)
+		for (int j = 0; j < N2 + 2 * NG; j++)
+			for (int k = 0; k < N3 + 2 * NG; k++)
+				for (int l = 0; l < 4; l++)
+					for (int row = 0; row < 4; row++)
+						for (int col = 0; col < 4; col++)
+							metricDiffField(i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1_ghost, X2min + j * dx2_ghost, X3min + k * dx3_ghost);
+	
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for (int row = 0; row < 4; row++)
+					for (int col = 0; col < 4; col++)
+					{
+						metricFuncHalfField1(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i + 3) * dx1 / 2, X2min + (j + 2) * dx2, X3min + (k + 2) * dx3);
+						metricFuncHalfField2(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + 2) * dx1, X2min + (2 * i + 3) * dx2 / 2, X3min + (k + 2) * dx3);
+						metricFuncHalfField3(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + 2) * dx1, X2min + (j + 2) * dx2, X3min + (2 * k + 3) * dx3 / 2);
+					}
 	init();
 	for (int i = 0; i < N1; i++)
 		for(int j = 0; j < N2; j++)
@@ -146,7 +156,7 @@ int main()
 	1)鬼化
 		分成两边分别鬼化
 	*/
-	for(int epoch = 0; epoch < 2; epoch++)
+	for(int epoch = 0; epoch < 50; epoch++)
 	{
 		auto start = clock();
 		for (int i = NG - 1; i >= 0; i--)
@@ -221,6 +231,7 @@ int main()
 					con(i, j, k, 6) = prim(i + NG, j + NG, k + NG, B2);
 					con(i, j, k, 7) = prim(i + NG, j + NG, k + NG, B3);
 				}
+
 		// prim2src
 		for (int i = 0; i < N1; i++)
 			for (int j = 0; j < N2; j++)
@@ -229,26 +240,20 @@ int main()
 					Eigen::Vector3d v{ prim(i + NG, j + NG, k + NG, U1) ,prim(i + NG, j + NG, k + NG, U2) ,prim(i + NG, j + NG, k + NG, U3) };
 					Eigen::Vector3d B{ prim(i + NG, j + NG, k + NG, B1) ,prim(i + NG, j + NG, k + NG, B2) ,prim(i + NG, j + NG, k + NG, B3) };
 					Eigen::Vector3d S{ con(i, j, k, 2) ,con(i, j, k, 3) ,con(i, j, k, 4) };
-					auto contract = [](Eigen::Matrix3d A, Eigen::Matrix3d B) {
-						double sum = 0;
-						for (int i = 0; i < 3; i++)
-							for (int j = 0; j < 3; j++)
-								sum += A(i, j) * B(i, j);
-						return sum;
-						};
 					Eigen::Matrix3d betaDiff;
-					betaDiff << metricDiffField(i + NG, j + NG, k + NG,1).betaVec()(0), metricDiffField(i + NG, j + NG, k + NG,2).betaVec()(0), metricDiffField(i + NG, j + NG, k + NG,3).betaVec()(0),
+					betaDiff << metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()(0), metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()(0), metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()(0),
 						metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()(1), metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()(1), metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()(1),
 						metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()(2), metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()(2), metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()(2);
 					double Gamma = 1 / sqrt(1 - square(i, j, k, v));
-					Eigen::Matrix3d W = S * (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * v).transpose() + (prim(i + NG, j + NG, k + NG, UU) + 0.5 * (square(i, j, k, B) * (1 - square(i, j, k, v)) + pow(dot(i, j, k, B, v), 2))) * metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, v) * v * B.transpose();
+					// W^{ij}
+					Eigen::Matrix3d W = S * v.transpose() + (prim(i + NG, j + NG, k + NG, UU) + 0.5 * (square(i, j, k, B) * (1 + square(i, j, k, v)) - pow(dot(i, j, k, B, v), 2))) * metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, v) * v * B.transpose();
 					src(i, j, k, 0) = 0;
 					src(i, j, k, 1) = 0.5 * contract(W, (metricFuncField(i + NG, j + NG, k + NG).betaVec()(0) * metricDiffField(i + NG, j + NG, k + NG, 1).gamma() + metricFuncField(i + NG, j + NG, k + NG).betaVec()(1) * metricDiffField(i + NG, j + NG, k + NG,2).gamma() + metricFuncField(i + NG, j + NG, k + NG).betaVec()(2) * metricDiffField(i + NG, j + NG, k + NG, 3).gamma()))
 						+ contract(W * metricFuncField(i, j, k).gamma(), betaDiff)
-						- (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(0) * metricDiffField(i + NG, j + NG, k + NG, 1).alpha() - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(1) * metricDiffField(i + NG, j + NG, k + NG,2).alpha() - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(2) * metricDiffField(i + NG, j + NG, k + NG, 3).alpha();
-					src(i, j, k, 2) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 1).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i + NG, j + NG, k + NG, 1).alpha();
-					src(i, j, k, 3) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 2).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i + NG, j + NG, k + NG, 2).alpha();
-					src(i, j, k, 4) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 3).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * metricDiffField(i + NG, j + NG, k + NG, 3).alpha();
+						- (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(0) * alphaDiffField(i, j, k, 1) - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(1) * alphaDiffField(i, j, k, 2) - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(2) * alphaDiffField(i, j, k, 3);
+					src(i, j, k, 2) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 1).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * alphaDiffField(i, j, k, 1);
+					src(i, j, k, 3) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 2).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * alphaDiffField(i, j, k, 2);
+					src(i, j, k, 4) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 3).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * alphaDiffField(i, j, k, 3);
 					src(i, j, k, 5) = 0;
 					src(i, j, k, 6) = 0;
 					src(i, j, k, 7) = 0;
@@ -341,7 +346,7 @@ int main()
 				}
 		//con2prim(prim具有鬼格)
 		auto max_iter = 0;
-		auto tol = 0.01;
+		auto tol = 0.001;
 		for (int i = 0; i < N1; i++)
 		{
 			for (int j = 0; j < N2; j++)
@@ -352,15 +357,17 @@ int main()
 					Eigen::Vector3d B{ con(i, j, k, 5) ,con(i, j, k, 6) ,con(i, j, k, 7) };
 					auto D = con(i, j, k, 0);
 					auto tau = con(i, j, k, 1);
-					double x0 = 1;
+					double x0 = 1e16;
 					for (int iter = 0; iter < max_iter; iter++)
 					{
 						auto x1 = x0 - f(i, j, k, D, tau, S, B, x0) / df(i, j, k, D, tau, S, B, x0); // 牛顿迭代公式
-						if (abs(x1 - x0) < tol)
+						if (abs((x1 - x0) / x0) < tol)
+						{
 							break;
+						}
 						x0 = x1;
 					}
-					auto Gamma = 1 / sqrt(abs(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x0) / pow(x0 + square(i, j, k, B), 2)));
+					auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x0) / pow(x0 + square(i, j, k, B), 2));
 					prim(i + NG, j + NG, k + NG, RHO) = D / Gamma;
 					prim(i + NG, j + NG, k + NG, UU) = (gam - 1) / gam * (x0 - Gamma * D) / pow(Gamma, 2);
 					prim(i + NG, j + NG, k + NG, U1) = (S(0) + dot(i, j, k, S, B) * B(0) / x0) / (x0 + square(i, j, k, B));
@@ -373,7 +380,6 @@ int main()
 			}
 		}
 		fix(prim);
-		print(prim);
 		totalTime += clock() - start;
 		std::cout << "Time(ms): " << clock() - start << std::endl;
 		if (epoch % 10 == 0) {

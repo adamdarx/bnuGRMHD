@@ -15,7 +15,7 @@ Metric::Metric(Eigen::Matrix4d metric) : m(metric)
 
 double Metric::alpha()
 {
-	return sqrt(this->betaVec().transpose() * this->gamma() * this->betaVec() - m(0, 0));
+	return sqrt(this->betaVec().transpose() * this->gamma().inverse() * this->betaVec() - m(0, 0));
 }
 
 Eigen::Vector3d Metric::betaVec()
