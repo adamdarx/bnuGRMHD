@@ -7,11 +7,11 @@
 const MetricComponent ZERO_COMPONENT = [](double x, double y, double z) {return 0; };	// 零分量
 constexpr auto a = (0.9375);
 constexpr auto h = (0.);
-constexpr auto theta = 0.5;								// HHL流和TVDLF流混合参数
+constexpr auto theta = 0.;								// HHL流和TVDLF流混合参数
 constexpr auto NDIM = (4);
-constexpr auto N1 = (5);
-constexpr auto N2 = (2);
-constexpr auto N3 = (2);
+constexpr auto N1 = (8);
+constexpr auto N2 = (8);
+constexpr auto N3 = (8);
 constexpr auto NG = (2);
 constexpr auto PI = (3.14159265358979323846);
 constexpr auto X1min = (0.19325057145871735);
@@ -30,17 +30,18 @@ constexpr auto beta = (100.);
 constexpr auto gam = (5. / 3.);
 constexpr auto kappa = (1.e-3);
 
+short max_iter = 0;		// maximum of iteration
+double tol = 1e-4;		// tolerance of root devation
+//steplength of time
+double Delta_t = 1;
 //MKS grid
 double Xgrid1[N1][N2][N3];
 double Xgrid2[N1][N2][N3];
 double Xgrid3[N1][N2][N3];
 //MKS grid spacing
-double dx1 = (X1max - X1min) / N1;
-double dx2 = (X2max - X2min) / N2;
-double dx3 = (X3max - X3min) / N3;
-double dx1_ghost = (X1max - X1min) / (N1 + 2 * NG);
-double dx2_ghost = (X2max - X2min) / (N2 + 2 * NG);
-double dx3_ghost = (X3max - X3min) / (N3 + 2 * NG);
+double dx1 = (X1max - X1min) / (N1 + 2 * NG);
+double dx2 = (X2max - X2min) / (N2 + 2 * NG);
+double dx3 = (X3max - X3min) / (N3 + 2 * NG);
 //KS grid
 double KS_coord1[N1][N2][N3];
 double KS_coord2[N1][N2][N3];
@@ -152,6 +153,8 @@ Eigen::Tensor<double, 3> cnL3(N1, N2, N3);
 Eigen::Tensor<double, 3> cnR1(N1, N2, N3);
 Eigen::Tensor<double, 3> cnR2(N1, N2, N3);
 Eigen::Tensor<double, 3> cnR3(N1, N2, N3);
+// 牛顿法求根
+Eigen::Tensor<double, 3> ksi(N1, N2, N3);
 
 // useful functions
 template<typename T> void print(T info) { std::cout << info << std::endl; }
@@ -194,26 +197,26 @@ void interpolate(Eigen::Tensor<double, 4> prim) {
 			for (int k = 0; k < N3; k++)
 				for (int index = 0; index < NPRIM; index++)
 				{
-					primL1(i, j, k, index) = prim(i + 2, j + 2, k + 2, index) - MC((prim(i + 3, j + 2, k + 2, index) - prim(i + 1, j + 2, k + 2, index)) / (2 * dx1),
-						2 * (prim(i + 3, j + 2, k + 2, index) - prim(i + 2, j + 2, k + 2, index)) / (dx1),
-						2 * (prim(i + 2, j + 2, k + 2, index) - prim(i + 1, j + 2, k + 2, index)) / (dx1)) * dx1 / 2;
-					primR1(i, j, k, index) = prim(i + 1, j + 2, k + 2, index) + MC((prim(i + 2, j + 2, k + 2, index) - prim(i, j + 2, k + 2, index)) / (2 * dx1),
-						2 * (prim(i + 2, j + 2, k + 2, index) - prim(i + 1, j + 2, k + 2, index)) / (dx1),
-						2 * (prim(i + 1, j + 2, k + 2, index) - prim(i, j + 2, k + 2, index)) / (dx1)) * dx1 / 2;
+					primL1(i, j, k, index) = prim(i + NG, j + NG, k + NG, index) - MC((prim(i + NG + 1, j + NG, k + NG, index) - prim(i + NG - 1, j + NG, k + NG, index)) / (2 * dx1),
+						2 * (prim(i + NG + 1, j + NG, k + NG, index) - prim(i + NG, j + NG, k + NG, index)) / (dx1),
+						2 * (prim(i + NG, j + NG, k + NG, index) - prim(i + NG - 1, j + NG, k + NG, index)) / (dx1)) * dx1 / 2;
+					primR1(i, j, k, index) = prim(i + NG - 1, j + NG, k + NG, index) + MC((prim(i + NG, j + NG, k + NG, index) - prim(i, j + NG, k + NG, index)) / (2 * dx1),
+						2 * (prim(i + NG, j + NG, k + NG, index) - prim(i + NG - 1, j + NG, k + NG, index)) / (dx1),
+						2 * (prim(i + NG - 1, j + NG, k + NG, index) - prim(i, j + NG, k + NG, index)) / (dx1)) * dx1 / 2;
 
-					primL2(i, j, k, index) = prim(i + 2, j + 3, k + 2, index) - MC((prim(i + 2, j + 2, k + 2, index) - prim(i + 2, j + 1, k + 2, index)) / (2 * dx2),
-						2 * (prim(i + 2, j + 3, k + 2, index) - prim(i + 2, j + 2, k + 2, index)) / (dx2),
-						2 * (prim(i + 2, j + 2, k + 2, index) - prim(i + 2, j + 1, k + 2, index)) / (dx2)) * dx2 / 2;
-					primR2(i, j, k, index) = prim(i + 2, j + 2, k + 2, index) + MC((prim(i + 2, j + 3, k + 2, index) - prim(i + 2, j, k + 2, index)) / (2 * dx2),
-						2 * (prim(i + 2, j + 2, k + 2, index) - prim(i + 2, j + 1, k + 2, index)) / (dx2),
-						2 * (prim(i + 2, j + 1, k + 2, index) - prim(i + 2, j, k + 2, index)) / (dx2)) * dx2 / 2;
+					primL2(i, j, k, index) = prim(i + NG, j + NG + 1, k + NG, index) - MC((prim(i + NG, j + NG, k + NG, index) - prim(i + NG, j + NG - 1, k + NG, index)) / (2 * dx2),
+						2 * (prim(i + NG, j + NG + 1, k + NG, index) - prim(i + NG, j + NG, k + NG, index)) / (dx2),
+						2 * (prim(i + NG, j + NG, k + NG, index) - prim(i + NG, j + NG - 1, k + NG, index)) / (dx2)) * dx2 / 2;
+					primR2(i, j, k, index) = prim(i + NG, j + NG, k + NG, index) + MC((prim(i + NG, j + NG + 1, k + NG, index) - prim(i + NG, j, k + NG, index)) / (2 * dx2),
+						2 * (prim(i + NG, j + NG, k + NG, index) - prim(i + NG, j + NG - 1, k + NG, index)) / (dx2),
+						2 * (prim(i + NG, j + NG - 1, k + NG, index) - prim(i + NG, j, k + NG, index)) / (dx2)) * dx2 / 2;
 
-					primL3(i, j, k, index) = prim(i + 2, j + 2, k + 2, index) - MC((prim(i + 2, j + 2, k + 3, index) - prim(i + 2, j + 2, k + 1, index)) / (2 * dx3),
-						2 * (prim(i + 2, j + 2, k + 3, index) - prim(i + 2, j + 2, k + 2, index)) / (dx3),
-						2 * (prim(i + 2, j + 2, k + 2, index) - prim(i + 2, j + 2, k + 1, index)) / (dx3)) * dx3 / 2;
-					primR3(i, j, k, index) = prim(i + 2, j + 2, k + 1, index) + MC((prim(i + 2, j + 2, k + 2, index) - prim(i + 2, j + 2, k, index)) / (2 * dx3),
-						2 * (prim(i + 2, j + 2, k + 2, index) - prim(i + 2, j + 2, k + 1, index)) / (dx3),
-						2 * (prim(i + 2, j + 2, k + 1, index) - prim(i + 2, j + 2, k, index)) / (dx3)) * dx3 / 2;
+					primL3(i, j, k, index) = prim(i + NG, j + NG, k + NG, index) - MC((prim(i + NG, j + NG, k + NG + 1, index) - prim(i + NG, j + NG, k + NG - 1, index)) / (2 * dx3),
+						2 * (prim(i + NG, j + NG, k + NG + 1, index) - prim(i + NG, j + NG, k + NG, index)) / (dx3),
+						2 * (prim(i + NG, j + NG, k + NG, index) - prim(i + NG, j + NG, k + NG - 1, index)) / (dx3)) * dx3 / 2;
+					primR3(i, j, k, index) = prim(i + NG, j + NG, k + NG - 1, index) + MC((prim(i + NG, j + NG, k + NG, index) - prim(i + NG, j + NG, k, index)) / (2 * dx3),
+						2 * (prim(i + NG, j + NG, k + NG, index) - prim(i + NG, j + NG, k + NG - 1, index)) / (dx3),
+						2 * (prim(i + NG, j + NG, k + NG - 1, index) - prim(i + NG, j + NG, k, index)) / (dx3)) * dx3 / 2;
 				}
 }
 
@@ -222,14 +225,14 @@ void prim2con(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 4>& con) {
 		for (int j = 0; j < N2; j++)
 			for (int k = 0; k < N3; k++)
 			{
-				Eigen::Vector3d v{ prim(i, j, k, U1) ,prim(i, j, k, U2) ,prim(i, j, k, U3) };
+				Eigen::Vector3d u{ prim(i, j, k, U1) ,prim(i, j, k, U2) ,prim(i, j, k, U3) };
 				Eigen::Vector3d B{ prim(i, j, k, B1) ,prim(i, j, k, B2) ,prim(i, j, k, B3) };
-				double Gamma = 1 / sqrt(1 - square(i, j, k, v));
+				double Gamma = sqrt(1 + square(i, j, k, u));
 				con(i, j, k, 0) = Gamma * prim(i, j, k, RHO);
-				con(i, j, k, 1) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) - prim(i, j, k, UU) + 0.5 * (square(i, j, k, B) * (1 + square(i, j, k, v) - pow(dot(i, j, k, B, v), 2))) - Gamma * prim(i, j, k, RHO);
-				con(i, j, k, 2) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) * prim(i, j, k, U1) + square(i, j, k, B) * prim(i, j, k, U1) - dot(i, j, k, B, v) * prim(i, j, k, B1);
-				con(i, j, k, 3) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) * prim(i, j, k, U2) + square(i, j, k, B) * prim(i, j, k, U2) - dot(i, j, k, B, v) * prim(i, j, k, B2);
-				con(i, j, k, 4) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) * prim(i, j, k, U3) + square(i, j, k, B) * prim(i, j, k, U3) - dot(i, j, k, B, v) * prim(i, j, k, B3);
+				con(i, j, k, 1) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) - prim(i, j, k, UU) + 0.5 * (square(i, j, k, B) * (1 + square(i, j, k, u / Gamma) - pow(dot(i, j, k, B, u / Gamma), 2))) - Gamma * prim(i, j, k, RHO);
+				con(i, j, k, 2) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) * prim(i, j, k, U1) + square(i, j, k, B) * prim(i, j, k, U1) - dot(i, j, k, B, u / Gamma) * prim(i, j, k, B1);
+				con(i, j, k, 3) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) * prim(i, j, k, U2) + square(i, j, k, B) * prim(i, j, k, U2) - dot(i, j, k, B, u / Gamma) * prim(i, j, k, B2);
+				con(i, j, k, 4) = (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU)) * pow(Gamma, 2) * prim(i, j, k, U3) + square(i, j, k, B) * prim(i, j, k, U3) - dot(i, j, k, B, u / Gamma) * prim(i, j, k, B3);
 				con(i, j, k, 5) = prim(i, j, k, B1);
 				con(i, j, k, 6) = prim(i, j, k, B2);
 				con(i, j, k, 7) = prim(i, j, k, B3);
@@ -266,8 +269,6 @@ double df(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::V
 }
 
 void con2prim(Eigen::Tensor<double, 4> con, Eigen::Tensor<double, 4>& prim) {
-	auto max_iter = 0;
-	auto tol = 0.001;
 	for (int i = 0; i < N1; i++)
 	{
 		for (int j = 0; j < N2; j++)
@@ -278,23 +279,26 @@ void con2prim(Eigen::Tensor<double, 4> con, Eigen::Tensor<double, 4>& prim) {
 				Eigen::Vector3d B{ con(i, j, k, 5) ,con(i, j, k, 6) ,con(i, j, k, 7) };
 				auto D = con(i, j, k, 0);
 				auto tau = con(i, j, k, 1);
-				double x0 = 1e16;
+				auto x0 = ksi(i, j, k);
 				for (int iter = 0; iter < max_iter; iter++)
 				{
-					auto x1 = x0 - f(i, j, k, D, tau, S, B, x0) / df(i, j, k, D, tau, S, B, x0); // 牛顿迭代公式
+					auto x1 = -f(i, j, k, D, tau, S, B, ksi(i, j, k)) / df(i, j, k, D, tau, S, B, ksi(i, j, k)); // 牛顿迭代公式
 					if (abs((x1 - x0) / x0) < tol)
 						break;
 					x0 = x1;
 				}
-				auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x0) / pow(x0 + square(i, j, k, B), 2));
-				prim(i, j, k, RHO) = D / Gamma;
-				prim(i, j, k, UU) = (gam - 1) / gam * (x0 - Gamma * D) / pow(Gamma, 2);
-				prim(i, j, k, U1) = (S(0) + dot(i, j, k, S, B) * B(0) / x0) / (x0 + square(i, j, k, B));
-				prim(i, j, k, U2) = (S(1) + dot(i, j, k, S, B) * B(1) / x0) / (x0 + square(i, j, k, B));
-				prim(i, j, k, U3) = (S(2) + dot(i, j, k, S, B) * B(2) / x0) / (x0 + square(i, j, k, B));
-				prim(i, j, k, B1) = B(0);
-				prim(i, j, k, B2) = B(1);
-				prim(i, j, k, B3) = B(2);
+				ksi(i, j, k) = isnan(x0) ? ksi(i, j, k) : x0;
+				if (ksi(i, j, k) == 0)
+					continue;
+				auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / ksi(i, j, k)) / pow(ksi(i, j, k) + square(i, j, k, B), 2));
+				prim(i + NG, j + NG, k + NG, RHO) = D / Gamma;
+				prim(i + NG, j + NG, k + NG, UU) = (gam - 1) / gam * (ksi(i, j, k) - Gamma * D) / pow(Gamma, 2);
+				prim(i + NG, j + NG, k + NG, U1) = (S(0) + dot(i, j, k, S, B) * B(0) / ksi(i, j, k)) / (ksi(i, j, k) + square(i, j, k, B)) * Gamma;
+				prim(i + NG, j + NG, k + NG, U2) = (S(1) + dot(i, j, k, S, B) * B(1) / ksi(i, j, k)) / (ksi(i, j, k) + square(i, j, k, B)) * Gamma;
+				prim(i + NG, j + NG, k + NG, U3) = (S(2) + dot(i, j, k, S, B) * B(2) / ksi(i, j, k)) / (ksi(i, j, k) + square(i, j, k, B)) * Gamma;
+				prim(i + NG, j + NG, k + NG, B1) = B(0);
+				prim(i + NG, j + NG, k + NG, B2) = B(1);
+				prim(i + NG, j + NG, k + NG, B3) = B(2);
 			}
 		}
 	}
@@ -306,19 +310,19 @@ void prim2flux(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 4> con, Eige
 		for (int j = 0; j < N2; j++)
 			for (int k = 0; k < N3; k++)
 			{
-				Eigen::Vector3d v{ prim(i, j, k, U1) ,prim(i, j, k, U2) ,prim(i, j, k, U3) };
+				Eigen::Vector3d u{ prim(i, j, k, U1) ,prim(i, j, k, U2) ,prim(i, j, k, U3) };
 				Eigen::Vector3d B{ prim(i, j, k, B1) ,prim(i, j, k, B2) ,prim(i, j, k, B3) };
 				Eigen::Vector3d S{ con(i, j, k, 2) ,con(i, j, k, 3) ,con(i, j, k, 4) };
-				double Gamma = 1 / sqrt(1 - square(i, j, k, v));
-				auto W = S * (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * v).transpose() + (prim(i, j, k, UU) + 0.5 * (square(i, j, k, B) * (1 - square(i, j, k, v)) + pow(dot(i, j, k, B, v), 2))) * metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, v) * v * B.transpose();
-				flux(i, j, k, 0) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * prim(i, j, k, U1 + comp) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp)) * con(i, j, k, 0);
-				flux(i, j, k, 1) = metricFuncField(i + NG, j + NG, k + NG).alpha() * (con(i, j, k, 2 + comp) - prim(i, j, k, U1 + comp) * con(i, j, k, 0)) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp) * con(i, j, k, 1);
+				double Gamma = sqrt(1 + square(i, j, k, u));
+				Eigen::Matrix3d W = S * (u / Gamma).transpose() + (prim(i + NG, j + NG, k + NG, UU) + 0.5 * (square(i, j, k, B) * (1 + square(i, j, k, u / Gamma)) - pow(dot(i, j, k, B, u / Gamma), 2))) * metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, u / Gamma) * u / Gamma * B.transpose();
+				flux(i, j, k, 0) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * u(comp) / Gamma - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp)) * con(i, j, k, 0);
+				flux(i, j, k, 1) = metricFuncField(i + NG, j + NG, k + NG).alpha() * (con(i, j, k, 2 + comp) - u(comp) / Gamma * con(i, j, k, 0)) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp) * con(i, j, k, 1);
 				flux(i, j, k, 2) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * W * metricFuncField(i + NG, j + NG, k + NG).gamma())(comp, 0) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp) * con(i, j, k, 2);
 				flux(i, j, k, 3) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * W * metricFuncField(i + NG, j + NG, k + NG).gamma())(comp, 1) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp) * con(i, j, k, 3);
 				flux(i, j, k, 4) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * W * metricFuncField(i + NG, j + NG, k + NG).gamma())(comp, 2) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp) * con(i, j, k, 4);
-				flux(i, j, k, 5) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * prim(i, j, k, U1 + comp) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp)) * con(i, j, k, 5) - (metricFuncField(i + NG, j + NG, k + NG).alpha() * prim(i, j, k, U1) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(0)) * con(i, j, k, 5 + comp);
-				flux(i, j, k, 6) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * prim(i, j, k, U1 + comp) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp)) * con(i, j, k, 6) - (metricFuncField(i + NG, j + NG, k + NG).alpha() * prim(i, j, k, U2) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(1)) * con(i, j, k, 5 + comp);
-				flux(i, j, k, 7) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * prim(i, j, k, U1 + comp) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp)) * con(i, j, k, 7) - (metricFuncField(i + NG, j + NG, k + NG).alpha() * prim(i, j, k, U3) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(2)) * con(i, j, k, 5 + comp);
+				flux(i, j, k, 5) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * u(comp) / Gamma - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp)) * con(i, j, k, 5) - (metricFuncField(i + NG, j + NG, k + NG).alpha() * u(0) / Gamma - metricFuncField(i + NG, j + NG, k + NG).betaVec()(0)) * con(i, j, k, 5 + comp);
+				flux(i, j, k, 6) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * u(comp) / Gamma - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp)) * con(i, j, k, 6) - (metricFuncField(i + NG, j + NG, k + NG).alpha() * u(1) / Gamma - metricFuncField(i + NG, j + NG, k + NG).betaVec()(1)) * con(i, j, k, 5 + comp);
+				flux(i, j, k, 7) = (metricFuncField(i + NG, j + NG, k + NG).alpha() * u(comp) / Gamma - metricFuncField(i + NG, j + NG, k + NG).betaVec()(comp)) * con(i, j, k, 7) - (metricFuncField(i + NG, j + NG, k + NG).alpha() * u(2) / Gamma - metricFuncField(i + NG, j + NG, k + NG).betaVec()(2)) * con(i, j, k, 5 + comp);
 			}
 }
 
@@ -327,18 +331,18 @@ void prim2src(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 4> con, Eigen
 		for (int j = 0; j < N2; j++)
 			for (int k = 0; k < N3; k++)
 			{
-				Eigen::Vector3d v{ prim(i + NG, j + NG, k + NG, U1) ,prim(i + NG, j + NG, k + NG, U2) ,prim(i + NG, j + NG, k + NG, U3) };
+				Eigen::Vector3d u{ prim(i + NG, j + NG, k + NG, U1) ,prim(i + NG, j + NG, k + NG, U2) ,prim(i + NG, j + NG, k + NG, U3) };
 				Eigen::Vector3d B{ prim(i + NG, j + NG, k + NG, B1) ,prim(i + NG, j + NG, k + NG, B2) ,prim(i + NG, j + NG, k + NG, B3) };
 				Eigen::Vector3d S{ con(i, j, k, 2) ,con(i, j, k, 3) ,con(i, j, k, 4) };
 				Eigen::Matrix3d betaDiff;
 				betaDiff << metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()(0), metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()(0), metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()(0),
 					metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()(1), metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()(1), metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()(1),
 					metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()(2), metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()(2), metricDiffField(i + NG, j + NG, k + NG, 3).betaVec()(2);
-				double Gamma = 1 / sqrt(1 - square(i, j, k, v));
-				Eigen::Matrix3d W = S * (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * v).transpose() + (prim(i + NG, j + NG, k + NG, UU) + 0.5 * (square(i, j, k, B) * (1 - square(i, j, k, v)) + pow(dot(i, j, k, B, v), 2))) * metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, v) * v * B.transpose();
+				double Gamma = sqrt(1 + square(i, j, k, u));
+				Eigen::Matrix3d W = S * (u / Gamma).transpose() + (prim(i + NG, j + NG, k + NG, UU) + 0.5 * (square(i, j, k, B) * (1 + square(i, j, k, u / Gamma)) - pow(dot(i, j, k, B, u / Gamma), 2))) * metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, u / Gamma) * u / Gamma * B.transpose();
 				src(i, j, k, 0) = 0;
 				src(i, j, k, 1) = 0.5 * contract(W, (metricFuncField(i + NG, j + NG, k + NG).betaVec()(0) * metricDiffField(i + NG, j + NG, k + NG, 1).gamma() + metricFuncField(i + NG, j + NG, k + NG).betaVec()(1) * metricDiffField(i + NG, j + NG, k + NG, 2).gamma() + metricFuncField(i + NG, j + NG, k + NG).betaVec()(2) * metricDiffField(i + NG, j + NG, k + NG, 3).gamma()))
-					+ contract(W * metricFuncField(i, j, k).gamma(), betaDiff)
+					+ contract(W * metricFuncField(i + NG, j + NG, k + NG).gamma(), betaDiff)
 					- (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(0) * alphaDiffField(i, j, k, 1) - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(1) * alphaDiffField(i, j, k, 2) - (metricFuncField(i + NG, j + NG, k + NG).gamma().inverse() * S)(2) * alphaDiffField(i, j, k, 3);
 				src(i, j, k, 2) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 1).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 1).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * alphaDiffField(i, j, k, 1);
 				src(i, j, k, 3) = 0.5 * metricFuncField(i + NG, j + NG, k + NG).alpha() * contract(W, metricDiffField(i + NG, j + NG, k + NG, 2).gamma()) + dot(i, j, k, S, metricDiffField(i + NG, j + NG, k + NG, 2).betaVec()) - (con(i, j, k, 0) + con(i, j, k, 1)) * alphaDiffField(i, j, k, 2);
@@ -355,22 +359,22 @@ void prim2c(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 3> &c, Eigen::T
 			for (int k = 0; k < N3; k++)
 				if(prim(i, j, k, RHO))
 				{
-					Eigen::Vector3d v{ prim(i, j, k, U1) ,prim(i, j, k, U2) ,prim(i, j, k, U3) };
+					Eigen::Vector3d u{ prim(i, j, k, U1) ,prim(i, j, k, U2) ,prim(i, j, k, U3) };
 					Eigen::Vector3d B{ prim(i, j, k, B1) ,prim(i, j, k, B2) ,prim(i, j, k, B3) };
-					double Gamma = 1 / sqrt(1 - square(i, j, k, v));
+					double Gamma = sqrt(1 + square(i, j, k, u));
 					auto u0 = Gamma / metricFuncField(i + NG, j + NG, k + NG).alpha();
 					Eigen::Vector3d ui = { Gamma * (prim(i, j, k, U1) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(0)),
 									Gamma * (prim(i, j, k, U2) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(1)),
 									Gamma * (prim(i, j, k, U3) - metricFuncField(i + NG, j + NG, k + NG).betaVec()(2)) };
 					auto cs_square = gam * prim(i, j, k, UU) / (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU));
-					auto cA_square = (square(i, j, k, B) * (1 - square(i, j, k, v)) + pow(dot(i, j, k, B, v), 2)) / (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU) + square(i, j, k, B) * (1 - square(i, j, k, v)) + pow(dot(i, j, k, B, v), 2));
+					auto cA_square = (square(i, j, k, B) * (1 - square(i, j, k, u / Gamma)) + pow(dot(i, j, k, B, u / Gamma), 2)) / (prim(i, j, k, RHO) + gam / (gam - 1) * prim(i, j, k, UU) + square(i, j, k, B) * (1 - square(i, j, k, u / Gamma)) + pow(dot(i, j, k, B, u / Gamma), 2));
 					auto vf_square = cA_square + cs_square - cA_square * cs_square;
 					auto sigmaf = vf_square ? (1 - vf_square) / vf_square : 0;
 					auto metricInv = metricFuncHalfField(i, j, k).m.inverse();
 					c(i, j, k) = (metricInv(0, comp) - pow(sigmaf, 2) * u0 * ui(comp)) / (metricInv(0, 0) - pow(sigmaf, 2) * u0 * u0) + sign * sqrt(abs(
 						pow((metricInv(0, comp) - pow(sigmaf, 2) * u0 * ui(comp)) / (metricInv(0, 0) - pow(sigmaf, 2) * u0 * u0), 2)
 						- (metricInv(comp, comp) - sigmaf * ui(comp) * ui(comp)) / (metricInv(0, 0) - sigmaf * u0 * u0)
-						));
+					));
 				}
 }
 
@@ -429,5 +433,21 @@ void check(Eigen::Tensor<double, 4> arr) {
 			for (int k = 0; k < N3; k++)
 				for(int l = 0; l < 8; l++)
 					std::cout << "i: " << i << "\tj: " << j << "\tk: " << k << "\tValue: " << arr(i, j, k, l) << std::endl;
+	return;
+}
+
+void check(Eigen::Tensor<double, 4> arr, int index) {
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				std::cout << "i: " << i << "\tj: " << j << "\tk: " << k << "\tValue: " << arr(i, j, k, index) << std::endl;
+	return;
+}
+
+void check(Eigen::Tensor<double, 3> arr) {
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				std::cout << "i: " << i << "\tj: " << j << "\tk: " << k << "\tValue: " << arr(i, j, k) << std::endl;
 	return;
 }
