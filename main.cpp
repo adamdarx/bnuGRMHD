@@ -15,6 +15,7 @@ TODO:
 #include "utils.h"
 #include "init.h"
 #include "metric/mks.h"
+#include <fstream>
 
 
 using std::thread;
@@ -23,6 +24,8 @@ using std::vector;
 
 int main()
 {
+	std::ofstream ofs;
+	ofs.open("grmhd.log", std::ios::out);
 	auto totalTime = 0.;
 	auto totalPhysicalTime = 0.;
 	{
@@ -153,10 +156,11 @@ int main()
 		5) 受约束运输
 		6) 整步长迭代
 	*/
-	int epochNum = 50000;	// 迭代次数
 	for(int epoch = 0; epoch < epochNum; epoch++)
 	{
 		auto start = clock();
+		// 时间步长
+		double Delta_t = 1;
 		for (int i = NG - 1; i >= 0; i--)
 			for (int j = NG - 1; j >= 0; j--)
 				for (int k = NG - 1; k >= 0; k--)
@@ -189,7 +193,6 @@ int main()
 					prim(i + 1, j + 1, k + 1, U1) = prim(i, j, k, U1) * (1 + dx1 / (X1min + (i + 1) * dx1));
 				}
 		interpolate(prim);
-
 		{
 			thread th1(basicCalc, primL1, ref(conL1), ref(fluxL1), ref(srcL1), ref(cpL1), ref(cnL1), ref(metricFuncHalfField1), 0);
 			thread th2(basicCalc, primL2, ref(conL2), ref(fluxL2), ref(srcL2), ref(cpL2), ref(cnL2), ref(metricFuncHalfField2), 1);
@@ -340,7 +343,6 @@ int main()
 						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField1(i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1(i + 1, j, k, l) - sqrt(metricFuncHalfField1(i - 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1(i, j, k, l))
 						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField2(i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2(i, j + 1, k, l) - sqrt(metricFuncHalfField1(i, j - 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2(i, j, k, l))
 						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField3(i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF3(i, j, k + 1, l) - sqrt(metricFuncHalfField1(i, j, k - 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF3(i, j, k, l));
-
 		//con2prim(prim具有鬼格)
 		for (int i = 0; i < N1; i++)
 		{
@@ -355,14 +357,14 @@ int main()
 					auto x0 = ksi(i, j, k);
 					for (int iter = 0; iter < max_iter; iter++)
 					{
-						auto x1 = -f(i, j, k, D, tau, S, B, ksi(i, j, k)) / df(i, j, k, D, tau, S, B, ksi(i, j, k)); // 牛顿迭代公式
+						auto x1 = x0 - f(i, j, k, D, tau, S, B, x0) / df(i, j, k, D, tau, S, B, x0); // 牛顿迭代公式
 						if (abs((x1 - x0) / x0) < tol)
 							break;
 						x0 = x1;
 					}
-					ksi(i, j, k) = isnan(x0) ? ksi(i, j, k) : x0;
-					if (ksi(i, j, k) == 0)
+					if (ksi(i, j, k) <= 0 || isnan(x0))
 						continue;
+					ksi(i, j, k) = x0;
 					auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / ksi(i, j, k)) / pow(ksi(i, j, k) + square(i, j, k, B), 2));
 					prim(i + NG, j + NG, k + NG, RHO) = D / Gamma;
 					prim(i + NG, j + NG, k + NG, UU) = (gam - 1) / gam * (ksi(i,j,k) - Gamma * D) / pow(Gamma, 2);
@@ -376,16 +378,26 @@ int main()
 			}
 		}
 		fix(prim);
-		if(epoch % 100 == 0) check(prim);
+		if (epoch % 100 == 0)
+		{
+			ofs << "-----------------------------Epoch: " << epoch << "-----------------------------" << std::endl;
+			for (int i = 0; i < N1; i++)
+				for (int j = 0; j < N2; j++)
+					for (int k = 0; k < N3; k++)
+						for (int l = 0; l < NPRIM; l++)
+							ofs << "i: " << i << "\tj: " << j << "\tk: " << k << "\tValue: " << prim(i, j, k, l) << std::endl;
+			ofs << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
+		}
 		totalTime += clock() - start;
 		totalPhysicalTime += Delta_t;
 		std::cout << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		if (epoch % 1000 == 0) {
+		if (epoch % 100 == 0) {
 			char filename[13];
-			sprintf(filename, "data%0.4d.bin", epoch / 10);
+			sprintf(filename, "data%0.4d.bin", epoch / 100);
 			write_bin(fopen(filename, "wb"));
 		}
 	}
-	std::cout << "Total times(ms): " << totalTime << std::endl << "Average time(ms): " << totalTime / 100 << std::endl;
+	std::cout << "Finished! Details can be found in grmhd.log. " << std::endl;
+	ofs << "Total times(ms): " << totalTime << std::endl << "Average time(ms): " << totalTime / epochNum << std::endl;
 	return 0;
 }

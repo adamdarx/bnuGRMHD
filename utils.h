@@ -9,13 +9,13 @@ constexpr auto a = (0.9375);
 constexpr auto h = (0.);
 constexpr auto theta = 0.;								// HHL流和TVDLF流混合参数
 constexpr auto NDIM = (4);
-constexpr auto N1 = (8);
-constexpr auto N2 = (8);
+constexpr auto N1 = (16);
+constexpr auto N2 = (16);
 constexpr auto N3 = (8);
 constexpr auto NG = (2);
 constexpr auto PI = (3.14159265358979323846);
 constexpr auto X1min = (0.19325057145871735);
-constexpr auto X1max = (16.824046010856292);
+constexpr auto X1max = (12.824046010856292);
 constexpr auto X2min = (1.e-16);
 constexpr auto X2max = (1. * PI);
 constexpr auto X3min = (1.e-16);
@@ -30,10 +30,9 @@ constexpr auto beta = (100.);
 constexpr auto gam = (5. / 3.);
 constexpr auto kappa = (1.e-3);
 
-short max_iter = 0;		// maximum of iteration
-double tol = 1e-4;		// tolerance of root devation
-//steplength of time
-double Delta_t = 1;
+unsigned short max_iter = 5;		// maximum of iteration
+double tol = 1e-4;					// tolerance of root devation
+auto epochNum = 10000;				// number of iteration epoch
 //MKS grid
 double Xgrid1[N1][N2][N3];
 double Xgrid2[N1][N2][N3];
@@ -245,27 +244,7 @@ double f(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::Ve
 }
 
 double df(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::Vector3d B, double x) {
-	auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x) / pow(x + square(i, j, k, B), 2));
-	return 1 + ((2 * pow(dot(i, j, k, S, B), 2) / pow(x, 3) -
-		square(i, j, k, B) * (2 * dot(i, j, k, S, B) * dot(i, j, k, B, (S + (B * dot(i, j, k, S, B)) / x)) / x)) /
-		(pow(x, 2) * pow(square(i, j, k, B) + x, 2)) +
-		(2 * square(i, j, k, S + (B * dot(i, j, k, S, B)) / x)) /
-		pow(square(i, j, k, B) + x, 3)) / 2. -
-		((-1 + gam) * (1 - square(i, j, k, S + (B * dot(i, j, k, S, B)) / x) /
-			pow(square(i, j, k, B) + x, 2))) *
-		(1 + (D * ((2 * dot(i, j, k, S, B) * dot(i, j, k, B, (S + (B * dot(i, j, k, S, B)) / x)) /
-			(pow(x, 2) * pow(square(i, j, k, B) + x, 2)) +
-			(2 * square(i, j, k, S + (B * dot(i, j, k, S, B)) / x)) /
-			pow(square(i, j, k, B) + x, 3)) /
-			(2. * pow(1 - square(i, j, k, S + (B * dot(i, j, k, S, B)) / x) /
-				pow(square(i, j, k, B) + x, 2), 1.5))))) / gam -
-		((-1 + gam) * ((2 * dot(i, j, k, S, B) * dot(i, j, k, B, (S + (B * dot(i, j, k, S, B)) / x))) /
-			(pow(x, 2) * pow(square(i, j, k, B) + x, 2)) +
-			(2 * square(i, j, k, S + (B * dot(i, j, k, S, B)) / x)) /
-			pow(square(i, j, k, B) + x, 3)) *
-			(x - D /
-				sqrt(1 - square(i, j, k, S + (B * dot(i, j, k, S, B)) / x) /
-					pow(square(i, j, k, B) + x, 2)))) / gam;
+	return (f(i, j, k, D, tau, S, B, x + SMALL) - f(i, j, k, D, tau, S, B, x - SMALL)) / (2 * SMALL);
 }
 
 void con2prim(Eigen::Tensor<double, 4> con, Eigen::Tensor<double, 4>& prim) {
@@ -282,14 +261,14 @@ void con2prim(Eigen::Tensor<double, 4> con, Eigen::Tensor<double, 4>& prim) {
 				auto x0 = ksi(i, j, k);
 				for (int iter = 0; iter < max_iter; iter++)
 				{
-					auto x1 = -f(i, j, k, D, tau, S, B, ksi(i, j, k)) / df(i, j, k, D, tau, S, B, ksi(i, j, k)); // 牛顿迭代公式
+					auto x1 = x0 - f(i, j, k, D, tau, S, B, x0) / df(i, j, k, D, tau, S, B, x0); // 牛顿迭代公式
 					if (abs((x1 - x0) / x0) < tol)
 						break;
 					x0 = x1;
 				}
-				ksi(i, j, k) = isnan(x0) ? ksi(i, j, k) : x0;
-				if (ksi(i, j, k) == 0)
+				if (ksi(i, j, k) <= 0 || isnan(x0))
 					continue;
+				ksi(i, j, k) = x0;
 				auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / ksi(i, j, k)) / pow(ksi(i, j, k) + square(i, j, k, B), 2));
 				prim(i + NG, j + NG, k + NG, RHO) = D / Gamma;
 				prim(i + NG, j + NG, k + NG, UU) = (gam - 1) / gam * (ksi(i, j, k) - Gamma * D) / pow(Gamma, 2);
