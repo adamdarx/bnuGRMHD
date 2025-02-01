@@ -1,5 +1,4 @@
 #pragma once
-#include "omp.h"
 #include "Metric.h"
 #include <iostream>
 #include <unsupported/Eigen/CXX11/Tensor>
