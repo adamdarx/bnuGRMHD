@@ -1,17 +1,16 @@
 ﻿/*
 bnuGRMHD ©️ 2025
-Date: 2024/01/27
-本文件是初代GRMHD的示例代码
+Date: 2024/02/01
 */
-#include <iostream>
-#include <thread>
 #include <cmath>
 #include <ctime>
+#include <fstream>
+#include <iostream>
+#include <thread>
 #include "Metric.h"
 #include "utils.h"
 #include "init.h"
 #include "metric/mks.h"
-#include <fstream>
 
 
 using std::thread;
@@ -426,6 +425,7 @@ int main(int argc, char* argv[])
 						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField1(i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1(i + 1, j, k, l) - sqrt(metricFuncHalfField1(i - 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1(i, j, k, l))
 						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField2(i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2(i, j + 1, k, l) - sqrt(metricFuncHalfField1(i, j - 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2(i, j, k, l))
 						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField3(i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF3(i, j, k + 1, l) - sqrt(metricFuncHalfField1(i, j, k - 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF3(i, j, k, l));
+
 		//con2prim(prim具有鬼格)
 		for (int i = 0; i < N1; i++)
 		{
