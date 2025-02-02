@@ -1,11 +1,11 @@
-#pragma once
+ï»¿#pragma once
 #include <iostream>
 #include <unsupported/Eigen/CXX11/Tensor>
 #include "Metric.h"
 MetricComponent ZERO_COMPONENT = [](double x, double y, double z) { return 0; };
 constexpr auto a = (0.9375);
 constexpr auto h = (0.);
-constexpr auto theta = 0.;								// HHLÁ÷ºÍTVDLFÁ÷»ìºÏ²ÎÊý
+constexpr auto theta = 0.;								// HHLï¿½ï¿½ï¿½ï¿½TVDLFï¿½ï¿½ï¿½ï¿½Ï²ï¿½ï¿½ï¿½
 constexpr auto NDIM = (4);
 constexpr auto N1 = (32);
 constexpr auto N2 = (16);
@@ -20,6 +20,10 @@ constexpr auto X3min = (1.e-16);
 constexpr auto X3max = (2. * PI);
 constexpr auto R0 = (0.);
 constexpr auto SMALL = (1.e-16);
+constexpr auto isX1periodical = false;
+constexpr auto isX2periodical = true;
+constexpr auto isX3periodical = true;
+constexpr auto cour = 0.8;
 
 //FM_torus disk parameter
 constexpr auto rin = (6.);
@@ -86,16 +90,16 @@ constexpr auto UUMIN = (1.e-8);
 constexpr auto SIGMAMAX = (50.);
 
 // metric
-Eigen::Tensor<MetricComponent, 2> metricFunc(4, 4);												// ¶È¹æÕÅÁ¿(0,2)ÐÍ
-Eigen::Tensor<MetricComponent, 3> metricDiff(4, 4, 4);												// ¶È¹æÕÅÁ¿µ¼Êý
-Eigen::Tensor<Metric, 3> metricFuncField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG);					// ¶È¹æ³¡(0,2)ÐÍ
-Eigen::Tensor<Metric, 4> metricDiffField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG, 4);					// ¶È¹æµ¼Êý³¡
-Eigen::Tensor<double, 4> alphaDiffField(N1, N2, N3, 4);												// alphaµ¼Êý³¡
-Eigen::Tensor<Metric, 3> metricFuncHalfField1(N1, N2, N3);											// ¼ÆËãÁ÷Ê±ÐèÒªµÄ°ë²½³¤¶È¹æ³¡(0,2)ÐÍ
-Eigen::Tensor<Metric, 3> metricFuncHalfField2(N1, N2, N3);											// ¼ÆËãÁ÷Ê±ÐèÒªµÄ°ë²½³¤¶È¹æ³¡(0,2)ÐÍ
-Eigen::Tensor<Metric, 3> metricFuncHalfField3(N1, N2, N3);											// ¼ÆËãÁ÷Ê±ÐèÒªµÄ°ë²½³¤¶È¹æ³¡(0,2)ÐÍ
+Eigen::Tensor<MetricComponent, 2> metricFunc(4, 4);												// ï¿½È¹ï¿½ï¿½ï¿½ï¿½ï¿½(0,2)ï¿½ï¿½
+Eigen::Tensor<MetricComponent, 3> metricDiff(4, 4, 4);												// ï¿½È¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+Eigen::Tensor<Metric, 3> metricFuncField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG);					// ï¿½È¹æ³¡(0,2)ï¿½ï¿½
+Eigen::Tensor<Metric, 4> metricDiffField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG, 4);					// ï¿½È¹æµ¼ï¿½ï¿½ï¿½ï¿½
+Eigen::Tensor<double, 4> alphaDiffField(N1, N2, N3, 4);												// alphaï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+Eigen::Tensor<Metric, 3> metricFuncHalfField1(N1, N2, N3);											// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Òªï¿½Ä°ë²½ï¿½ï¿½ï¿½È¹æ³¡(0,2)ï¿½ï¿½
+Eigen::Tensor<Metric, 3> metricFuncHalfField2(N1, N2, N3);											// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Òªï¿½Ä°ë²½ï¿½ï¿½ï¿½È¹æ³¡(0,2)ï¿½ï¿½
+Eigen::Tensor<Metric, 3> metricFuncHalfField3(N1, N2, N3);											// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Òªï¿½Ä°ë²½ï¿½ï¿½ï¿½È¹æ³¡(0,2)ï¿½ï¿½
 
-// Ö÷ÒªÁ¿£¬¶ÔÓ¦´«Í³GRMHD·½³ÌÖÐµÄP(´ø¹í¸ñ)
+// ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½Í³GRMHDï¿½ï¿½ï¿½ï¿½ï¿½Ðµï¿½P(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
 Eigen::Tensor<double, 4> prim(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG, NPRIM);
 Eigen::Tensor<double, 4> primHalf(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG, NPRIM);
 Eigen::Tensor<double, 4> primL1(N1, N2, N3, NPRIM);
@@ -104,7 +108,7 @@ Eigen::Tensor<double, 4> primL3(N1, N2, N3, NPRIM);
 Eigen::Tensor<double, 4> primR1(N1, N2, N3, NPRIM);
 Eigen::Tensor<double, 4> primR2(N1, N2, N3, NPRIM);
 Eigen::Tensor<double, 4> primR3(N1, N2, N3, NPRIM);
-// ÊØºãÁ¿£¬¶ÔÓ¦´«Í³GRMHD·½³ÌÖÐµÄU(´ø¹í¸ñ)
+// ï¿½Øºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½Í³GRMHDï¿½ï¿½ï¿½ï¿½ï¿½Ðµï¿½U(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
 Eigen::Tensor<double, 4> con(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> conHalf(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> conL1(N1, N2, N3, 8);
@@ -113,26 +117,26 @@ Eigen::Tensor<double, 4> conL3(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> conR1(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> conR2(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> conR3(N1, N2, N3, 8);
-// Á÷(flux)
+// ï¿½ï¿½(flux)
 Eigen::Tensor<double, 4> fluxL1(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxL2(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxL3(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxR1(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxR2(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxR3(N1, N2, N3, 8);
-// HHLÁ÷
+// HHLï¿½ï¿½
 Eigen::Tensor<double, 4> fluxHLL1(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxHLL2(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxHLL3(N1, N2, N3, 8);
-// TVDLFÁ÷
+// TVDLFï¿½ï¿½
 Eigen::Tensor<double, 4> fluxTVDLF1(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxTVDLF2(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxTVDLF3(N1, N2, N3, 8);
-// »ìºÏÁ÷
+// ï¿½ï¿½ï¿½ï¿½ï¿½
 Eigen::Tensor<double, 4> fluxLLF1(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxLLF2(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxLLF3(N1, N2, N3, 8);
-// ¹â»¬»ìºÏÁ÷
+// ï¿½â»¬ï¿½ï¿½ï¿½ï¿½ï¿½
 Eigen::Tensor<double, 4> fluxSmoothLLF1(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxSmoothLLF2(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> fluxSmoothLLF3(N1, N2, N3, 8);
@@ -144,21 +148,21 @@ Eigen::Tensor<double, 4> srcL3(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> srcR1(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> srcR2(N1, N2, N3, 8);
 Eigen::Tensor<double, 4> srcR3(N1, N2, N3, 8);
-// ÌØÕ÷ËÙ¶È(c_+)
+// ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½(c_+)
 Eigen::Tensor<double, 3> cpL1(N1, N2, N3);
 Eigen::Tensor<double, 3> cpL2(N1, N2, N3);
 Eigen::Tensor<double, 3> cpL3(N1, N2, N3);
 Eigen::Tensor<double, 3> cpR1(N1, N2, N3);
 Eigen::Tensor<double, 3> cpR2(N1, N2, N3);
 Eigen::Tensor<double, 3> cpR3(N1, N2, N3);
-// ÌØÕ÷ËÙ¶È(c_-)
+// ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½(c_-)
 Eigen::Tensor<double, 3> cnL1(N1, N2, N3);
 Eigen::Tensor<double, 3> cnL2(N1, N2, N3);
 Eigen::Tensor<double, 3> cnL3(N1, N2, N3);
 Eigen::Tensor<double, 3> cnR1(N1, N2, N3);
 Eigen::Tensor<double, 3> cnR2(N1, N2, N3);
 Eigen::Tensor<double, 3> cnR3(N1, N2, N3);
-// Å£¶Ù·¨Çó¸ù
+// Å£ï¿½Ù·ï¿½ï¿½ï¿½ï¿½
 Eigen::Tensor<double, 3> ksi(N1, N2, N3);
 
 // useful functions
@@ -393,7 +397,7 @@ void con2prim(Eigen::Tensor<double, 4> con, Eigen::Tensor<double, 4>& prim) {
 				auto x0 = ksi(i, j, k);
 				for (int iter = 0; iter < max_iter; iter++)
 				{
-					auto x1 = x0 - f(i, j, k, D, tau, S, B, x0) / df(i, j, k, D, tau, S, B, x0); // Å£¶Ùµü´ú¹«Ê½
+					auto x1 = x0 - f(i, j, k, D, tau, S, B, x0) / df(i, j, k, D, tau, S, B, x0); // Å£ï¿½Ùµï¿½ï¿½ï¿½ï¿½ï¿½Ê½
 					if (abs((x1 - x0) / x0) < tol)
 						break;
 					x0 = x1;
@@ -462,13 +466,13 @@ void prim2src(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 4> con, Eigen
 				src(i, j, k, 6) = 0;
 				src(i, j, k, 7) = 0;
 			}
-	}
+}
 
-void prim2c(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 3> &c, Eigen::Tensor<Metric, 3>& metricFuncHalfField, short sign, short comp) {
+void prim2c(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 3>& c, Eigen::Tensor<Metric, 3>& metricFuncHalfField, short sign, short comp) {
 	for (int i = 0; i < N1; i++)
 		for (int j = 0; j < N2; j++)
 			for (int k = 0; k < N3; k++)
-				if(prim(i, j, k, RHO))
+				if (prim(i, j, k, RHO))
 				{
 					Eigen::Vector3d u{ prim(i, j, k, U1) ,prim(i, j, k, U2) ,prim(i, j, k, U3) };
 					Eigen::Vector3d B{ prim(i, j, k, B1) ,prim(i, j, k, B2) ,prim(i, j, k, B3) };
@@ -494,37 +498,37 @@ void calFluxHHL(Eigen::Tensor<double, 3> cpL, Eigen::Tensor<double, 3> cpR,
 	Eigen::Tensor<double, 4> conL, Eigen::Tensor<double, 4> conR,
 	Eigen::Tensor<double, 4> fluxL, Eigen::Tensor<double, 4> fluxR,
 	Eigen::Tensor<double, 4>& fluxHLL
-	) {
-		for (int i = 0; i < N1; i++)
-			for (int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
-					for (int l = 0; l < 8; l++)
-					{
-						auto c_max = max(0, cpR(i, j, k), cpL(i, j, k));
-						auto c_min = -min(0, cnR(i, j, k), cnL(i, j, k));
-						fluxHLL(i, j, k, l) = c_max + c_min ? (c_min * fluxR(i, j, k, l) + c_max * fluxL(i, j, k, l) - c_max * c_min * (conR(i, j, k, l) - conL(i, j, k, l))) / (c_max + c_min) : 0;
-					}
-	}
+) {
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for (int l = 0; l < 8; l++)
+				{
+					auto c_max = max(0, cpR(i, j, k), cpL(i, j, k));
+					auto c_min = -min(0, cnR(i, j, k), cnL(i, j, k));
+					fluxHLL(i, j, k, l) = c_max + c_min ? (c_min * fluxR(i, j, k, l) + c_max * fluxL(i, j, k, l) - c_max * c_min * (conR(i, j, k, l) - conL(i, j, k, l))) / (c_max + c_min) : 0;
+				}
+}
 
 void calFluxTVDLF(Eigen::Tensor<double, 3> cpL, Eigen::Tensor<double, 3> cpR,
 	Eigen::Tensor<double, 3> cnL, Eigen::Tensor<double, 3> cnR,
 	Eigen::Tensor<double, 4> conL, Eigen::Tensor<double, 4> conR,
 	Eigen::Tensor<double, 4> fluxL, Eigen::Tensor<double, 4> fluxR,
 	Eigen::Tensor<double, 4>& fluxTVDLF
-	) {
-		for (int i = 0; i < N1; i++)
-			for (int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
-					for (int l = 0; l < 8; l++)
-					{
-						auto c_max = max(0, cpR(i, j, k), cpL(i, j, k));
-						auto c_min = -min(0, cnR(i, j, k), cnL(i, j, k));
-						auto c = max(c_max, c_min);
-						fluxTVDLF(i, j, k, l) = 0.5 * (fluxR(i, j, k, l) + fluxL(i, j, k, l)) - 0.5 * c * (conR(i, j, k, l) - conL(i, j, k, l));
-					}
+) {
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for (int l = 0; l < 8; l++)
+				{
+					auto c_max = max(0, cpR(i, j, k), cpL(i, j, k));
+					auto c_min = -min(0, cnR(i, j, k), cnL(i, j, k));
+					auto c = max(c_max, c_min);
+					fluxTVDLF(i, j, k, l) = 0.5 * (fluxR(i, j, k, l) + fluxL(i, j, k, l)) - 0.5 * c * (conR(i, j, k, l) - conL(i, j, k, l));
+				}
 }
 
-// ²¢·¢º¯Êý
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 void basicCalc(Eigen::Tensor<double, 4> prim, Eigen::Tensor<double, 4>& con, Eigen::Tensor<double, 4>& flux, Eigen::Tensor<double, 4>& src, Eigen::Tensor<double, 3>& cp, Eigen::Tensor<double, 3>& cn, Eigen::Tensor<Metric, 3>& metricFuncHalfField, short comp) {
 	prim2con(prim, con);
 	prim2flux(prim, con, flux, comp);
@@ -539,10 +543,10 @@ void fluxCalc(Eigen::Tensor<double, 3> cpL, Eigen::Tensor<double, 3> cpR, Eigen:
 }
 
 void check(Eigen::Tensor<double, 4> arr) {
-	for(int i = 0; i < N1; i++)
+	for (int i = 0; i < N1; i++)
 		for (int j = 0; j < N2; j++)
 			for (int k = 0; k < N3; k++)
-				for(int l = 0; l < 8; l++)
+				for (int l = 0; l < 8; l++)
 					std::cout << "i: " << i << "\tj: " << j << "\tk: " << k << "\tValue: " << arr(i, j, k, l) << std::endl;
 	return;
 }

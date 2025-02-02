@@ -132,8 +132,8 @@ void fix(Eigen::Tensor<double, 4> prim) {
                 r = BL_coord1[i][j][k];
                 rho_floor = RHOMIN * pow(r, -3. / 2.);
                 ug_floor = UUMIN * pow(r, -3. / 2. * gam);
-                if (prim(i, j, k, RHO) < rho_floor) prim(i, j, k, RHO) = rho_floor;
-                if (prim(i, j, k, UU) < ug_floor) prim(i, j, k, UU) = ug_floor;
+                if (prim(i + NG, j + NG, k + NG, RHO) < rho_floor) prim(i + NG, j + NG, k + NG, RHO) = rho_floor;
+                if (prim(i + NG, j + NG, k + NG, UU) < ug_floor) prim(i + NG, j + NG, k + NG, UU) = ug_floor;
                 bsq = bsq_cal(i, j, k);
                 sigma = bsq / prim(i, j, k, RHO);
                 if (sigma > SIGMAMAX) prim(i, j, k, RHO) = bsq / SIGMAMAX;
