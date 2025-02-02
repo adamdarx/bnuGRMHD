@@ -12,7 +12,6 @@ Date: 2024/02/01
 #include "init.h"
 #include "metric/mks.h"
 
-
 using std::thread;
 using std::ref;
 
@@ -150,132 +149,7 @@ int main(int argc, char* argv[])
 		auto start = clock();
 		// 时间步长
 		double Delta_t = 1;
-		// 鬼化
-		{
-			for (int i = NG - 1; i >= 0; i--)
-			{
-				for (int j = NG - 1; j >= 0; j--)
-				{
-					for (int k = NG - 1; k >= 0; k--)
-					{
-						prim(i, j, k, RHO) = prim(i + 1, j + 1, k + 1, RHO) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-						prim(i, j, k, UU) = prim(i + 1, j + 1, k + 1, UU) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-						prim(i, j, k, B1) = prim(i + 1, j + 1, k + 1, B1) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-
-						prim(i, j, k, U2) = prim(i + 1, j + 1, k + 1, U2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, U3) = prim(i + 1, j + 1, k + 1, U3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, B2) = prim(i + 1, j + 1, k + 1, B2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, B3) = prim(i + 1, j + 1, k + 1, B3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-						prim(i, j, k, U1) = prim(i + 1, j + 1, k + 1, U1) * (1 + dx1 / (X1min + (i + 1) * dx1));
-					}
-					for (int k = NG + N3; k < 2 * NG + N3 - 1; k++)
-					{
-						prim(i + 1, j + 1, k + 1, RHO) = prim(i, j, k, RHO) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-						prim(i + 1, j + 1, k + 1, UU) = prim(i, j, k, UU) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-						prim(i + 1, j + 1, k + 1, B1) = prim(i, j, k, B1) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-
-						prim(i + 1, j + 1, k + 1, U2) = prim(i, j, k, U2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, U3) = prim(i, j, k, U3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, B2) = prim(i, j, k, B2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, B3) = prim(i, j, k, B3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-						prim(i + 1, j + 1, k + 1, U1) = prim(i, j, k, U1) * (1 + dx1 / (X1min + (i + 1) * dx1));
-					}
-				}
-				for (int j = NG + N2; j < 2 * NG + N2 - 1; j++)
-				{
-					for (int k = NG - 1; k >= 0; k--)
-					{
-						prim(i, j, k, RHO) = prim(i + 1, j + 1, k + 1, RHO) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-						prim(i, j, k, UU) = prim(i + 1, j + 1, k + 1, UU) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-						prim(i, j, k, B1) = prim(i + 1, j + 1, k + 1, B1) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-
-						prim(i, j, k, U2) = prim(i + 1, j + 1, k + 1, U2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, U3) = prim(i + 1, j + 1, k + 1, U3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, B2) = prim(i + 1, j + 1, k + 1, B2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, B3) = prim(i + 1, j + 1, k + 1, B3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-						prim(i, j, k, U1) = prim(i + 1, j + 1, k + 1, U1) * (1 + dx1 / (X1min + (i + 1) * dx1));
-					}
-					for (int k = NG + N3; k < 2 * NG + N3 - 1; k++)
-					{
-						prim(i + 1, j + 1, k + 1, RHO) = prim(i, j, k, RHO) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-						prim(i + 1, j + 1, k + 1, UU) = prim(i, j, k, UU) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-						prim(i + 1, j + 1, k + 1, B1) = prim(i, j, k, B1) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-
-						prim(i + 1, j + 1, k + 1, U2) = prim(i, j, k, U2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, U3) = prim(i, j, k, U3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, B2) = prim(i, j, k, B2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, B3) = prim(i, j, k, B3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-						prim(i + 1, j + 1, k + 1, U1) = prim(i, j, k, U1) * (1 + dx1 / (X1min + (i + 1) * dx1));
-					}
-				}
-			}
-
-			for (int i = NG + N1; i < 2 * NG + N1 - 1; i++)
-			{
-				for (int j = NG - 1; j >= 0; j--)
-				{
-					for (int k = NG - 1; k >= 0; k--)
-					{
-						prim(i, j, k, RHO) = prim(i + 1, j + 1, k + 1, RHO) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-						prim(i, j, k, UU) = prim(i + 1, j + 1, k + 1, UU) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-						prim(i, j, k, B1) = prim(i + 1, j + 1, k + 1, B1) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-
-						prim(i, j, k, U2) = prim(i + 1, j + 1, k + 1, U2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, U3) = prim(i + 1, j + 1, k + 1, U3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, B2) = prim(i + 1, j + 1, k + 1, B2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, B3) = prim(i + 1, j + 1, k + 1, B3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-						prim(i, j, k, U1) = prim(i + 1, j + 1, k + 1, U1) * (1 + dx1 / (X1min + (i + 1) * dx1));
-					}
-					for (int k = NG + N3; k < 2 * NG + N3 - 1; k++)
-					{
-						prim(i + 1, j + 1, k + 1, RHO) = prim(i, j, k, RHO) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-						prim(i + 1, j + 1, k + 1, UU) = prim(i, j, k, UU) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-						prim(i + 1, j + 1, k + 1, B1) = prim(i, j, k, B1) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-
-						prim(i + 1, j + 1, k + 1, U2) = prim(i, j, k, U2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, U3) = prim(i, j, k, U3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, B2) = prim(i, j, k, B2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, B3) = prim(i, j, k, B3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-						prim(i + 1, j + 1, k + 1, U1) = prim(i, j, k, U1) * (1 + dx1 / (X1min + (i + 1) * dx1));
-					}
-				}
-				for (int j = NG + N2; j < 2 * NG + N2 - 1; j++)
-				{
-					for (int k = NG - 1; k >= 0; k--)
-					{
-						prim(i, j, k, RHO) = prim(i + 1, j + 1, k + 1, RHO) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-						prim(i, j, k, UU) = prim(i + 1, j + 1, k + 1, UU) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-						prim(i, j, k, B1) = prim(i + 1, j + 1, k + 1, B1) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-
-						prim(i, j, k, U2) = prim(i + 1, j + 1, k + 1, U2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, U3) = prim(i + 1, j + 1, k + 1, U3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, B2) = prim(i + 1, j + 1, k + 1, B2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i, j, k, B3) = prim(i + 1, j + 1, k + 1, B3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-						prim(i, j, k, U1) = prim(i + 1, j + 1, k + 1, U1) * (1 + dx1 / (X1min + (i + 1) * dx1));
-					}
-					for (int k = NG + N3; k < 2 * NG + N3 - 1; k++)
-					{
-						prim(i + 1, j + 1, k + 1, RHO) = prim(i, j, k, RHO) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-						prim(i + 1, j + 1, k + 1, UU) = prim(i, j, k, UU) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-						prim(i + 1, j + 1, k + 1, B1) = prim(i, j, k, B1) * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-
-						prim(i + 1, j + 1, k + 1, U2) = prim(i, j, k, U2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, U3) = prim(i, j, k, U3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, B2) = prim(i, j, k, B2) * (1 - dx1 / (X1min + (i + 1) * dx1));
-						prim(i + 1, j + 1, k + 1, B3) = prim(i, j, k, B3) * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-						prim(i + 1, j + 1, k + 1, U1) = prim(i, j, k, U1) * (1 + dx1 / (X1min + (i + 1) * dx1));
-					}
-				}
-			}
-		}
+		ghostify(prim);
 		interpolate(prim);
 		{
 			thread th1(basicCalc, primL1, ref(conL1), ref(fluxL1), ref(srcL1), ref(cpL1), ref(cnL1), ref(metricFuncHalfField1), 0);
@@ -299,9 +173,9 @@ int main(int argc, char* argv[])
 			th2.join();
 			th3.join();
 		}
-		Eigen::Tensor<double, 4> fluxLLF1 = theta * fluxHLL1 + (1 - theta) * fluxTVDLF1;
-		Eigen::Tensor<double, 4> fluxLLF2 = theta * fluxHLL2 + (1 - theta) * fluxTVDLF2;
-		Eigen::Tensor<double, 4> fluxLLF3 = theta * fluxHLL3 + (1 - theta) * fluxTVDLF3;
+		fluxLLF1 = theta * fluxHLL1 + (1 - theta) * fluxTVDLF1;
+		fluxLLF2 = theta * fluxHLL2 + (1 - theta) * fluxTVDLF2;
+		fluxLLF3 = theta * fluxHLL3 + (1 - theta) * fluxTVDLF3;
 		// 4.半步长迭代(prim中包含鬼格,需要单独使用函数)
 		// prim2con
 		for (int i = 0; i < N1; i++)
@@ -372,8 +246,8 @@ int main(int argc, char* argv[])
 						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField1(i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1(i + 1, j, k, l) - sqrt(metricFuncHalfField1(i - 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1(i, j, k, l))
 						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField2(i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2(i, j + 1, k, l) - sqrt(metricFuncHalfField1(i, j - 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2(i, j, k, l))
 						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField3(i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF3(i, j, k + 1, l) - sqrt(metricFuncHalfField1(i, j, k - 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF3(i, j, k, l));
-		
 		con2prim(conHalf, primHalf);
+		ghostify(primHalf);
 		interpolate(primHalf);
 		{
 			thread th1(basicCalc, primL1, ref(conL1), ref(fluxL1), ref(srcL1), ref(cpL1), ref(cnL1), ref(metricFuncHalfField1), 0);
@@ -397,9 +271,9 @@ int main(int argc, char* argv[])
 			th2.join();
 			th3.join();
 		}
-		Eigen::Tensor<double, 4> fluxSmoothLLF1 = fluxLLF1;
-		Eigen::Tensor<double, 4> fluxSmoothLLF2 = fluxLLF2;
-		Eigen::Tensor<double, 4> fluxSmoothLLF3 = fluxLLF3;
+		fluxSmoothLLF1 = fluxLLF1;
+		fluxSmoothLLF2 = fluxLLF2;
+		fluxSmoothLLF3 = fluxLLF3;
 		/*
 		5) 平滑化
 		*/
