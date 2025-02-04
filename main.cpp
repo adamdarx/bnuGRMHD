@@ -349,7 +349,7 @@ int main(int argc, char* argv[])
 		totalTime += clock() - start;
 		totalPhysicalTime += Delta_t;
 		std::cout << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		if (epoch % 100 == 0) {
+		if ((int)totalPhysicalTime % 10 == 0) {
 			char filename[13];
 			sprintf(filename, "data%0.4d.bin", epoch / 100);
 			write_bin(fopen(filename, "wb"));
