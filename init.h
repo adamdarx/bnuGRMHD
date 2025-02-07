@@ -35,16 +35,16 @@ double ut_cal(double g[NDIM][NDIM], double u1, double u2, double u3) {
 //convert 4-velocity u^i from bl coord to mks coord
 void convert_ui(int i, int j, int k) {
     double uu[NDIM];
-    uu[1] = primInit[i][j][k][U1];
-    uu[2] = primInit[i][j][k][U2];
-    uu[3] = primInit[i][j][k][U3];
+    uu[1] = prim[i][j][k][U1];
+    uu[2] = prim[i][j][k][U2];
+    uu[3] = prim[i][j][k][U3];
     uu[0] = ut_cal(gdd_bl[i][j][k], uu[1], uu[2], uu[3]);
     vect_trans(uu, J_bl2ks[i][j][k]);
     vect_trans(uu, J_ks2mks[i][j][k]);
-    primInit[i][j][k][U0] = uu[0];
-    primInit[i][j][k][U1] = uu[1];
-    primInit[i][j][k][U2] = uu[2];
-    primInit[i][j][k][U3] = uu[3];
+    prim[i][j][k][U0] = uu[0];
+    prim[i][j][k][U1] = uu[1];
+    prim[i][j][k][U2] = uu[2];
+    prim[i][j][k][U3] = uu[3];
 }
 
 //caculate the constant l
@@ -66,11 +66,11 @@ double bsq_cal(int i, int j, int k) {
     b[0] = 0.;
     for (int m = 1; m < 4; m++) {
         for (int n = 0; n < 4; n++) {
-            b[0] += gdd_mks[i][j][k][m][n] * primInit[i][j][k][B1 + m - 1] * primInit[i][j][k][U0 + n - 1];
+            b[0] += gdd_mks[i][j][k][m][n] * prim[i][j][k][B1 + m - 1] * prim[i][j][k][U0 + n - 1];
         }
     }
     for (int m = 1; m < 4; m++) {
-        b[m] = (primInit[i][j][k][B1 + m - 1] + b[0] * primInit[i][j][k][U1 + m - 1]) / (SMALL + primInit[i][j][k][U0]);
+        b[m] = (prim[i][j][k][B1 + m - 1] + b[0] * prim[i][j][k][U1 + m - 1]) / (SMALL + prim[i][j][k][U0]);
     }
     bsq = 0.;
     for (int m = 0; m < 4; m++) {
@@ -89,11 +89,11 @@ double compute_B_from_A(double A[N1 + 1][N2 + 1][N3 + 1]) {
     for (int i = 1; i < N1; i++) {
         for (int j = 1; j < N2; j++) {
             for (int k = 0; k < N3; k++) {
-                primInit[i][j][k][B1] = (A[i - 1][j][k] - A[i - 1][j - 1][k] +
+                prim[i][j][k][B1] = (A[i - 1][j][k] - A[i - 1][j - 1][k] +
                     A[i][j][k] - A[i][j - 1][k]) / (2. * dx2 * gdet_mks[i][j][k]);
-                primInit[i][j][k][B2] = -(A[i][j - 1][k] - A[i - 1][j - 1][k] +
+                prim[i][j][k][B2] = -(A[i][j - 1][k] - A[i - 1][j - 1][k] +
                     A[i][j][k] - A[i - 1][j][k]) / (2. * dx1 * gdet_mks[i][j][k]);
-                primInit[i][j][k][B3] = 0.;
+                prim[i][j][k][B3] = 0.;
                 r = BL_coord1[i][j][k];
                 if (r >= rin) {
                     bsq = bsq_cal(i, j, k);
@@ -106,25 +106,7 @@ double compute_B_from_A(double A[N1 + 1][N2 + 1][N3 + 1]) {
 }
 
 //fix primitive variable by adding density rho
-void fix(double primInit[N1][N2][N3][NPRIM]) {
-    double r, rho_floor, ug_floor, bsq, sigma;
-    for (int i = 1; i < N1; i++) {
-        for (int j = 1; j < N2; j++) {
-            for (int k = 1; k < N3; k++) {
-                r = BL_coord1[i][j][k];
-                rho_floor = RHOMIN * pow(r, -3. / 2.);
-                ug_floor = UUMIN * pow(r, -3. / 2. * gam);
-                if (primInit[i][j][k][RHO] < rho_floor) primInit[i][j][k][RHO] = rho_floor;
-                if (primInit[i][j][k][UU] < ug_floor) primInit[i][j][k][UU] = ug_floor;
-                bsq = bsq_cal(i, j, k);
-                sigma = bsq / primInit[i][j][k][RHO];
-                if (sigma > SIGMAMAX) primInit[i][j][k][RHO] = bsq / SIGMAMAX;
-            }
-        }
-    }
-}
-
-void fix(Eigen::Tensor<double, 4> prim) {
+void fix() {
     double r, rho_floor, ug_floor, bsq, sigma;
     for (int i = 0; i < N1; i++) {
         for (int j = 0; j < N2; j++) {
@@ -132,11 +114,11 @@ void fix(Eigen::Tensor<double, 4> prim) {
                 r = BL_coord1[i][j][k];
                 rho_floor = RHOMIN * pow(r, -3. / 2.);
                 ug_floor = UUMIN * pow(r, -3. / 2. * gam);
-                if (prim(i + NG, j + NG, k + NG, RHO) < rho_floor) prim(i + NG, j + NG, k + NG, RHO) = rho_floor;
-                if (prim(i + NG, j + NG, k + NG, UU) < ug_floor) prim(i + NG, j + NG, k + NG, UU) = ug_floor;
+                if (prim[i][j][k][RHO] < rho_floor) prim[i][j][k][RHO] = rho_floor;
+                if (prim[i][j][k][UU] < ug_floor) prim[i][j][k][UU] = ug_floor;
                 bsq = bsq_cal(i, j, k);
-                sigma = bsq / prim(i, j, k, RHO);
-                if (sigma > SIGMAMAX) prim(i, j, k, RHO) = bsq / SIGMAMAX;
+                sigma = bsq / prim[i][j][k][RHO];
+                if (sigma > SIGMAMAX) prim[i][j][k][RHO] = bsq / SIGMAMAX;
             }
         }
     }
@@ -152,7 +134,7 @@ int write_bin(FILE* fp) {
 }
 
 //read bin
-int read_bin(Eigen::Tensor<double, 4> prim, FILE* fp) {
+int read_bin(double prim[N1][N2][N3][NPRIM], FILE* fp) {
     size_t total_elements = N1 * N2 * N3 * NPRIM;
     if (fread(&prim, sizeof(double), total_elements, fp) != total_elements) {
         return -1;
@@ -444,14 +426,14 @@ void init() {
                 /**************************************************************************************************
                 (4) get primitive variables at the grid points
                 ***************************************************************************************************/
-                primInit[i][j][k][RHO] = 0.;
-                primInit[i][j][k][UU] = 0.;
-                primInit[i][j][k][U1] = 0.;
-                primInit[i][j][k][U2] = 0.;
-                primInit[i][j][k][U3] = 0.;
-                primInit[i][j][k][B1] = 0.;
-                primInit[i][j][k][B2] = 0.;
-                primInit[i][j][k][B3] = 0.;
+                prim[i][j][k][RHO] = 0.;
+                prim[i][j][k][UU] = 0.;
+                prim[i][j][k][U1] = 0.;
+                prim[i][j][k][U2] = 0.;
+                prim[i][j][k][U3] = 0.;
+                prim[i][j][k][B1] = 0.;
+                prim[i][j][k][B2] = 0.;
+                prim[i][j][k][B3] = 0.;
 
                 if (r >= rin) {
                     lnh = 0.5 * log((1. + sqrt(1. + 4. * (l * l * sigma * sigma) * delta / (AA * AA * sinth2))) / (sigma * delta / AA))
@@ -475,14 +457,14 @@ void init() {
                     expm2chi = sigma * sigma * delta / (AA * AA * sinth2);
                     up1 = sqrt((-1. + sqrt(1. + 4. * l * l * expm2chi)) / 2.);
                     up = 2. * a * r * sqrt(1. + up1 * up1) / sqrt(AA * sigma * delta) + sqrt(sigma / AA) * up1 / sinth;
-                    primInit[i][j][k][RHO] = rho;
+                    prim[i][j][k][RHO] = rho;
                     if (rho > rhomax) rhomax = rho;
                     //rancval = ranc(0);
-                    primInit[i][j][k][UU] = u;// * (1. + 4.e-2 * (rancval - 0.5));
+                    prim[i][j][k][UU] = u;// * (1. + 4.e-2 * (rancval - 0.5));
                     if (u > umax && r > rin) umax = u;
-                    primInit[i][j][k][U1] = ur;
-                    primInit[i][j][k][U2] = uh;
-                    primInit[i][j][k][U3] = up;
+                    prim[i][j][k][U1] = ur;
+                    prim[i][j][k][U2] = uh;
+                    prim[i][j][k][U3] = up;
                 }
                 if (r >= rin) {
                     convert_ui(i, j, k);      //transfrom U1, U2, U3 from bl coord to mks coord
@@ -495,8 +477,8 @@ void init() {
     for (int i = 0; i < N1; i++) {
         for (int j = 0; j < N2; j++) {
             for (int k = 0; k < N3; k++) {
-                primInit[i][j][k][RHO] /= rhomax;
-                primInit[i][j][k][UU] /= rhomax;
+                prim[i][j][k][RHO] /= rhomax;
+                prim[i][j][k][UU] /= rhomax;
             }
         }
     }
@@ -509,7 +491,7 @@ void init() {
                 A[i][j][k] = 0.;
                 r = BL_coord1[i][j][k];
                 if (r >= rin) {
-                    rho_ave = 0.25 * (primInit[i][j][k][RHO] + primInit[i - 1][j][k][RHO] + primInit[i][j - 1][k][RHO] + primInit[i - 1][j - 1][k][RHO]);
+                    rho_ave = 0.25 * (prim[i][j][k][RHO] + prim[i - 1][j][k][RHO] + prim[i][j - 1][k][RHO] + prim[i - 1][j - 1][k][RHO]);
                     q = rho_ave - 0.2;
                     if (q > 0.) {
                         A[i][j][k] = q;
@@ -528,7 +510,7 @@ void init() {
             for (int k = 0; k < N3; k++) {
                 r = BL_coord1[i][j][k];
                 if (r >= rin) {
-                    pg = (gam - 1.) * primInit[i][j][k][UU];
+                    pg = (gam - 1.) * prim[i][j][k][UU];
                     if (pg > pg_max) pg_max = pg;
                 }
             }
@@ -545,19 +527,19 @@ void init() {
     for (int i = 0; i < N1; i++) {
         for (int j = 0; j < N2; j++) {
             for (int k = 0; k < N3; k++) {
-                primInit[i][j][k][B1] *= norm;
-                primInit[i][j][k][B2] *= norm;
-                primInit[i][j][k][B3] *= norm;
+                prim[i][j][k][B1] *= norm;
+                prim[i][j][k][B2] *= norm;
+                prim[i][j][k][B3] *= norm;
                 r = BL_coord1[i][j][k];
                 if (r >= rin) {
-                    primInit[i][j][k][BSQ] = bsq_cal(i, j, k);
+                    prim[i][j][k][BSQ] = bsq_cal(i, j, k);
                 }
                 else {
-                    primInit[i][j][k][BSQ] = 0.;
+                    prim[i][j][k][BSQ] = 0.;
                 }
             }
         }
     }
     /*fix p by adding rho*/
-    fix(primInit);
+    fix();
 }
