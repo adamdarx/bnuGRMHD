@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
 				for (int k = 0; k < N3 + 2 * NG; k++)
 					for (int row = 0; row < 4; row++)
 						for (int col = 0; col < 4; col++)
-							metricFuncField(i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + j * dx2, X3min + k * dx3);
+							metricFuncField(i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1Ghost, X2min + j * dx2Ghost, X3min + k * dx3Ghost);
 
 		// 利用中心差分计算alpha的导数
 		for (int i = 0; i < N1; i++)
@@ -41,9 +41,9 @@ int main(int argc, char* argv[])
 					alphaDiffField[i][j][k][3] = (metricFuncField(i + NG, j + NG, k + NG + 1).alpha() - metricFuncField(i + NG, j + NG, k + NG - 1).alpha()) / (2 * dx3);
 				}
 
-		for (int i = 0; i < N1 + 2 * NG; i++)
-			for (int j = 0; j < N2 + 2 * NG; j++)
-				for (int k = 0; k < N3 + 2 * NG; k++)
+		for (int i = 0; i < N1; i++)
+			for (int j = 0; j < N2; j++)
+				for (int k = 0; k < N3; k++)
 					for (int l = 0; l < 4; l++)
 						for (int row = 0; row < 4; row++)
 							for (int col = 0; col < 4; col++)
@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
 						}
 		init();
 		char filename[13];
-		sprintf(filename, "data%0.4d.bin", 0);
+		sprintf(filename, "./data/data%0.4d.bin", 0);
 		write_bin(fopen(filename, "wb"));
 		for (int i = 0; i < N1; i++)
 			for (int j = 0; j < N2; j++)
@@ -111,6 +111,7 @@ int main(int argc, char* argv[])
 			th3.join();
 		}
 		
+#pragma omp parallel for
 		for (int i = 0; i < N1; i++)
 			for (int j = 0; j < N2; j++)
 				for (int k = 0; k < N3; k++)
@@ -126,6 +127,7 @@ int main(int argc, char* argv[])
 
 		prim2src(prim, con, src);
 
+#pragma omp parallel for
 		for (int i = 0; i < N1; i++)
 			for (int j = 0; j < N2; j++)
 				for (int k = 0; k < N3; k++)
@@ -142,13 +144,14 @@ int main(int argc, char* argv[])
 					Delta_t = min(cour * min(dx1 / (2 * c1), dx2 / (2 * c2), dx3 / (2 * c3)), Delta_t);
 				}
 
+#pragma omp parallel for
 		for (int i = 1; i < N1 - 1; i++)
 			for (int j = 1; j < N2 - 1; j++)
 				for (int k = 1; k < N3 - 1; k++)
 					for (int l = 0; l < 8; l++)
 						conHalf[i][j][k][l] = con[i][j][k][l] + src[i][j][k][l] * Delta_t / 2
 						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField1(i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1[i + 1][j][k][l] - sqrt(metricFuncHalfField1(i - 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1[i][j][k][l])
-						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField2(i, j+ 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2[i][j + 1][k][l] - sqrt(metricFuncHalfField1(i, j - 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2[i][j][k][l])
+						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField2(i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2[i][j + 1][k][l] - sqrt(metricFuncHalfField1(i, j - 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF2[i][j][k][l])
 						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField3(i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF3[i][j][k + 1][l] - sqrt(metricFuncHalfField1(i, j, k - 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF3[i][j][k][l]);
 
 
@@ -184,6 +187,8 @@ int main(int argc, char* argv[])
 		/*
 		5) 平滑化
 		*/
+
+#pragma omp parallel for
 		for (int i = 1; i < N1 - 1; i++)
 			for (int j = 1; j < N2 - 1; j++)
 				for (int k = 1; k < N3 - 1; k++)
@@ -198,9 +203,11 @@ int main(int argc, char* argv[])
 		/*
 		6) 整步迭代
 		*/
+
+#pragma omp parallel for
 		for (int i = 1; i < N1 - 1; i++)
-			for (int j = isX2periodical ? N2 : 1; j < (isX2periodical ? 2 * N2 : N2 - 1); j++)
-				for (int k = isX3periodical ? N3 : 1; k < (isX3periodical ? 2 * N3 : N3 - 1); k++)
+			for (int j = 1; j < N2 - 1; j++)
+				for (int k = 1; k < N3 - 1; k++)
 					for (int l = 0; l < 8; l++)
 						con[i][j][k][l] = con[i][j][k][l] + src[i][j][k][l] * Delta_t / 2
 						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField1(i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1[i + 1][j][k][l] - sqrt(metricFuncHalfField1(i - 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF1[i][j][k][l])
@@ -215,7 +222,7 @@ int main(int argc, char* argv[])
 		totalPhysicalTime += Delta_t;
 		std::cout << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
 		char filename[13];
-		sprintf(filename, "data%0.4d.bin", epoch);
+		sprintf(filename, "./data/data%0.4d.bin", epoch);
 		write_bin(fopen(filename, "wb"));
 		ofs << "--------Epoch--------" << epoch << std::endl;
 		for(int i = 0; i < N1; i++)

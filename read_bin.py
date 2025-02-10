@@ -1,11 +1,12 @@
 import numpy as np
+import sys
 
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter, MaxNLocator
 
-N1, N2, N3, NPRIM = 128, 64, 8, 10
+N1, N2, N3, NPRIM = 128, 128, 4, 10
 a = 0.9375
 R0 = 0
 h = 0
@@ -16,11 +17,11 @@ small = 1e-16
 PI = 3.14159265358979323846
 
 X1min = 0.19325057145871735
-X1max = 12.824046010856292
+X1max = 7.824046010856292
 X2min = 0
-X2max = PI
+X2max = 2 * PI
 X3min = 0
-X3max = 2*PI
+X3max = 2 * PI
 
 dx1 = (X1max - X1min) / N1
 dx2 = (X2max - X2min) / N2
@@ -40,27 +41,6 @@ def read_bin(file_path):
     data = np.fromfile(file_path, dtype=np.float64, count=total_elements)
     data = data.reshape((N1, N2, N3, NPRIM))
     return data
-
-t = 16
-file_path = f"./data{t:0>4d}.bin"
-data = read_bin(file_path)
-
-
-has_nan = np.any(np.isnan(data))
-if has_nan:
-    print("数组中存在NaN值")
-    nan_indices = np.where(np.isnan(data))
-    print("NaN 的索引位置 (三维数组)：")
-    for i in range(len(nan_indices[0])):
-        print(f"NaN 位于索引 ({nan_indices[0][i]}, {nan_indices[1][i]}, {nan_indices[2][i]}, {nan_indices[3][i]})")
-else:
-    print("数组中不存在NaN值")
-
-rho = data[:, :, :, 0]
-ug = data[:, :, :, 1]
-uu = data[:, :, :, 2:5+1]
-B = data[:, :, :, 6:8+1]
-bsq = data[:, :, :, 9]
 
 #black hole
 def black_hole():
@@ -104,8 +84,50 @@ def rho_xz(lim):
     cb.formatter = FormatStrFormatter('%.1f')
     cb.ax.tick_params(labelsize = size)
     cb.update_ticks()
-    plt.savefig('./rho_xz%04d.png' %t, bbox_inches='tight')
+    plt.savefig('./pic/rho_xz%04d.png' %t, bbox_inches='tight')
     print(t)
     plt.cla()
 
-rho_xz(20)
+if __name__ == "__main__":
+    if len(sys.argv) == 2:
+        for t in range(int(sys.argv[1]) + 1):
+            file_path = f"./data/data{t:0>4d}.bin"
+            data = read_bin(file_path)
+            has_nan = np.any(np.isnan(data))
+            if has_nan:
+                print("数组中存在NaN值")
+                nan_indices = np.where(np.isnan(data))
+                print("NaN 的索引位置 (三维数组)：")
+                for i in range(len(nan_indices[0])):
+                    print(f"NaN 位于索引 ({nan_indices[0][i]}, {nan_indices[1][i]}, {nan_indices[2][i]}, {nan_indices[3][i]})")
+            else:
+                print("数组中不存在NaN值")
+            rho = data[:, :, :, 0]
+            ug = data[:, :, :, 1]
+            uu = data[:, :, :, 2:5+1]
+            B = data[:, :, :, 6:8+1]
+            bsq = data[:, :, :, 9]
+            rho_xz(20)
+    else:
+        for t in range(int(sys.argv[1]) + 1, int(sys.argv[2]) + 1):
+            file_path = f"./data/data{t:0>4d}.bin"
+            data = read_bin(file_path)
+            has_nan = np.any(np.isnan(data))
+            if has_nan:
+                print("数组中存在NaN值")
+                nan_indices = np.where(np.isnan(data))
+                print("NaN 的索引位置 (三维数组)：")
+                for i in range(len(nan_indices[0])):
+                    print(f"NaN 位于索引 ({nan_indices[0][i]}, {nan_indices[1][i]}, {nan_indices[2][i]}, {nan_indices[3][i]})")
+            else:
+                print("数组中不存在NaN值")
+            rho = data[:, :, :, 0]
+            ug = data[:, :, :, 1]
+            uu = data[:, :, :, 2:5+1]
+            B = data[:, :, :, 6:8+1]
+            bsq = data[:, :, :, 9]
+            rho_xz(20)
+
+
+
+
