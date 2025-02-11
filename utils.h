@@ -7,15 +7,15 @@ MetricComponent ZERO_COMPONENT = [](double x, double y, double z) { return 0; };
 constexpr auto a = (0.9375);
 constexpr auto h = (0.);
 constexpr auto SMALL = (1.e-16);
-constexpr auto theta = 0.;								// HHL����TVDLF����ϲ���
+constexpr auto theta = 0.5;
 constexpr auto NDIM = (4);
-constexpr auto N1 = (128);
-constexpr auto N2 = (128);
+constexpr auto N1 = (16);
+constexpr auto N2 = (16);
 constexpr auto N3 = (4);
 constexpr auto NG = (2);
 constexpr auto PI = (3.14159265358979323846);
 constexpr auto X1min = (0.19325057145871735);
-constexpr auto X1max = (6.824046010856292);
+constexpr auto X1max = (7.824046010856292);
 constexpr auto X2min = (SMALL);
 constexpr auto X2max = (PI - SMALL);
 constexpr auto X3min = (SMALL);
@@ -24,11 +24,15 @@ constexpr auto R0 = (0.);
 constexpr auto isX1periodical = false;
 constexpr auto isX2periodical = false;
 constexpr auto isX3periodical = false;
-constexpr auto cour = 0.7;
+constexpr auto cour = 1e-2;
+constexpr auto LEFT = 0;
+constexpr auto RIGHT = 1;
+constexpr auto NEG = 0;
+constexpr auto POS = 1;
 
 //FM_torus disk parameter
-constexpr auto rin = (4.);
-constexpr auto rmax = (9.);
+constexpr auto rin = (6.);
+constexpr auto rmax = (12.);
 constexpr auto beta = (100.);
 constexpr auto gam = (5. / 3.);
 constexpr auto kappa = (1.e-3);
@@ -44,9 +48,6 @@ double Xgrid3[N1][N2][N3];
 double dx1 = (X1max - X1min) / (N1);
 double dx2 = (X2max - X2min) / (N2);
 double dx3 = (X3max - X3min) / (N3);
-double dx1Ghost = (X1max - X1min) / (N1 + 2 * NG);
-double dx2Ghost = (X2max - X2min) / (N2 + 2 * NG);
-double dx3Ghost = (X3max - X3min) / (N3 + 2 * NG);
 //KS grid
 double KS_coord1[N1][N2][N3];
 double KS_coord2[N1][N2][N3];
@@ -93,79 +94,37 @@ constexpr auto UUMIN = (1.e-8);
 constexpr auto SIGMAMAX = (50.);
 
 // metric
-Eigen::Tensor<MetricComponent, 2> metricFunc(4, 4);												// �ȹ�����(0,2)��
-Eigen::Tensor<MetricComponent, 3> metricDiff(4, 4, 4);												// �ȹ���������
-Eigen::Tensor<Metric, 3> metricFuncField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG);					// �ȹ泡(0,2)��
-Eigen::Tensor<Metric, 4> metricDiffField(N1, N2, N3, 4);											// �ȹ浼����
-double alphaDiffField[N1][N2][N3][4];																// alpha������
-Eigen::Tensor<Metric, 3> metricFuncHalfField1(N1, N2, N3);											// ������ʱ��Ҫ�İ벽���ȹ泡(0,2)��
-Eigen::Tensor<Metric, 3> metricFuncHalfField2(N1, N2, N3);											// ������ʱ��Ҫ�İ벽���ȹ泡(0,2)��
-Eigen::Tensor<Metric, 3> metricFuncHalfField3(N1, N2, N3);											// ������ʱ��Ҫ�İ벽���ȹ泡(0,2)��
+Eigen::Tensor<MetricComponent, 2> metricFunc(4, 4);												
+Eigen::Tensor<MetricComponent, 3> metricDiff(4, 4, 4);			
 
-// ��Ҫ������Ӧ��ͳGRMHD�����е�P(������)
+Eigen::Tensor<Metric, 3> metricFuncField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG);	
+Eigen::Tensor<Metric, 3> metricFuncHalfField1(N1 + 1, N2 + 1, N3 + 1);
+Eigen::Tensor<Metric, 3> metricFuncHalfField2(N1 + 1, N2 + 1, N3 + 1);
+Eigen::Tensor<Metric, 3> metricFuncHalfField3(N1 + 1, N2 + 1, N3 + 1);
+Eigen::Tensor<Metric, 3> metricFuncHalfField[3] = { metricFuncHalfField1, metricFuncHalfField2, metricFuncHalfField3 };
+
+double alphaDiffField[N1][N2][N3][4];
+double alphaDiffHalfField[3][N1 + 1][N2 + 1][N3 + 1][4];
+
+Eigen::Tensor<Metric, 4> metricDiffField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG, 4);
+Eigen::Tensor<Metric, 4> metricDiffHalfField1(N1 + 1, N2 + 1, N3 + 1, 4);
+Eigen::Tensor<Metric, 4> metricDiffHalfField2(N1 + 1, N2 + 1, N3 + 1, 4);
+Eigen::Tensor<Metric, 4> metricDiffHalfField3(N1 + 1, N2 + 1, N3 + 1, 4);
+Eigen::Tensor<Metric, 4> metricDiffHalfField[3] = { metricDiffHalfField1, metricDiffHalfField2, metricDiffHalfField3 };
+
 double prim[N1][N2][N3][NPRIM];
 double primGhost[N1 + 2 * NG][N2 + 2 * NG][N3 + 2 * NG][NPRIM];
-double primL1[N1][N2][N3][NPRIM];
-double primL2[N1][N2][N3][NPRIM];
-double primL3[N1][N2][N3][NPRIM];
-double primR1[N1][N2][N3][NPRIM];
-double primR2[N1][N2][N3][NPRIM];
-double primR3[N1][N2][N3][NPRIM];
-// �غ�������Ӧ��ͳGRMHD�����е�U(������)
+double primLR[2][3][N1 + 1][N2 + 1][N3 + 1][NPRIM];				// 2是左右(0为左，1为右)，3是方向
 double con[N1][N2][N3][8];
-double conHalf[N1][N2][N3][8];
-double conL1[N1][N2][N3][8];
-double conL2[N1][N2][N3][8];
-double conL3[N1][N2][N3][8];
-double conR1[N1][N2][N3][8];
-double conR2[N1][N2][N3][8];
-double conR3[N1][N2][N3][8];
-// ��(flux)
-double fluxL1[N1][N2][N3][8];
-double fluxL2[N1][N2][N3][8];
-double fluxL3[N1][N2][N3][8];
-double fluxR1[N1][N2][N3][8];
-double fluxR2[N1][N2][N3][8];
-double fluxR3[N1][N2][N3][8];
-// HHL��
-double fluxHLL1[N1][N2][N3][8];
-double fluxHLL2[N1][N2][N3][8];
-double fluxHLL3[N1][N2][N3][8];
-// TVDLF��
-double fluxTVDLF1[N1][N2][N3][8];
-double fluxTVDLF2[N1][N2][N3][8];
-double fluxTVDLF3[N1][N2][N3][8];
-// �����
-double fluxLLF1[N1][N2][N3][8];
-double fluxLLF2[N1][N2][N3][8];
-double fluxLLF3[N1][N2][N3][8];
-// �⻬�����
-double fluxSmoothLLF1[N1][N2][N3][8];
-double fluxSmoothLLF2[N1][N2][N3][8];
-double fluxSmoothLLF3[N1][N2][N3][8];
-// Դ(source)
+double conLR[2][3][N1 + 1][N2 + 1][N3 + 1][8];
+double fluxLR[2][3][N1 + 1][N2 + 1][N3 + 1][8];
+double fluxHLL[3][N1 + 1][N2 + 1][N3 + 1][8];					// 3是方向
+double fluxTVDLF[3][N1 + 1][N2 + 1][N3 + 1][8];
+double fluxLLF[3][N1 + 1][N2 + 1][N3 + 1][8];
+double fluxSmoothLLF[3][N1 + 1][N2 + 1][N3 + 1][8];
 double src[N1][N2][N3][8];
-double srcL1[N1][N2][N3][8];
-double srcL2[N1][N2][N3][8];
-double srcL3[N1][N2][N3][8];
-double srcR1[N1][N2][N3][8];
-double srcR2[N1][N2][N3][8];
-double srcR3[N1][N2][N3][8];
-// �����ٶ�(c_+)
-double cpL1[N1][N2][N3];
-double cpL2[N1][N2][N3];
-double cpL3[N1][N2][N3];
-double cpR1[N1][N2][N3];
-double cpR2[N1][N2][N3];
-double cpR3[N1][N2][N3];
-// �����ٶ�(c_-)
-double cnL1[N1][N2][N3];
-double cnL2[N1][N2][N3];
-double cnL3[N1][N2][N3];
-double cnR1[N1][N2][N3];
-double cnR2[N1][N2][N3];
-double cnR3[N1][N2][N3];
-// ţ�ٷ����
+double srcLR[2][3][N1 + 1][N2 + 1][N3 + 1][8];
+double c[2][2][3][N1 + 1][N2 + 1][N3 + 1];						// 分别是正负，左右，方向
 double ksi[N1][N2][N3];
 
 // useful functions
@@ -187,12 +146,12 @@ inline double MC(double x, double y, double z)
 		return 0;
 }
 
-double dot(int i, int j, int k, Eigen::Vector3d vecA, Eigen::Vector3d vecB) {
-	return double(vecA.transpose() * metricFuncField(i + NG, j + NG, k + NG).gamma() * vecB);
+double dot(int i, int j, int k, Eigen::Vector3d vecA, Eigen::Vector3d vecB, Eigen::Tensor<Metric, 3> metric) {
+	return double(vecA.transpose() * metric(i, j, k).gamma() * vecB);
 }
 
-double square(int i, int j, int k, Eigen::Vector3d vec) {
-	return dot(i, j, k, vec, vec);
+double square(int i, int j, int k, Eigen::Vector3d vec, Eigen::Tensor<Metric, 3> metric) {
+	return dot(i, j, k, vec, vec, metric);
 }
 
 double contract(Eigen::Matrix3d A, Eigen::Matrix3d B) {
@@ -218,170 +177,286 @@ void ghostify() {
 				primGhost[NG + i][NG + j][NG + k][B2] = prim[i][j][k][B2];
 				primGhost[NG + i][NG + j][NG + k][B3] = prim[i][j][k][B3];
 			}
-
+	// 1. 鬼化X1方向
 #pragma omp parallel for
 	for (int i = NG - 1; i >= 0; i--)
-	{
-		for (int j = NG - 1; j >= 0; j--)
-		{
-			for (int k = NG - 1; k >= 0; k--)
+		for (int j = NG; j < N2 + NG; j++)
+			for (int k = NG; k < N3 + NG; k++)
 			{
-				primGhost[i][j][k][RHO] = primGhost[i+1][j+1][k+1][RHO] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				primGhost[i][j][k][UU] = primGhost[i+1][j+1][k+1][UU] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				primGhost[i][j][k][B1] = primGhost[i+1][j+1][k+1][B1] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
+				primGhost[i][j][k][RHO] = primGhost[i + 1][j + 1][k + 1][RHO] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
+				primGhost[i][j][k][UU] = primGhost[i + 1][j + 1][k + 1][UU] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
+				primGhost[i][j][k][B1] = primGhost[i + 1][j + 1][k + 1][B1] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
 
-				primGhost[i][j][k][U2] = primGhost[i+1][j+1][k+1][U2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][U3] = primGhost[i+1][j+1][k+1][U3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][B2] = primGhost[i+1][j+1][k+1][B2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][B3] = primGhost[i+1][j+1][k+1][B3] * (1 - dx1 / (X1min + (i + 1) * dx1));
+				primGhost[i][j][k][U2] = primGhost[i + 1][j + 1][k + 1][U2] * (1 - dx1);
+				primGhost[i][j][k][U3] = primGhost[i + 1][j + 1][k + 1][U3] * (1 - dx1);
+				primGhost[i][j][k][B2] = primGhost[i + 1][j + 1][k + 1][B2] * (1 - dx1);
+				primGhost[i][j][k][B3] = primGhost[i + 1][j + 1][k + 1][B3] * (1 - dx1);
 
-				primGhost[i][j][k][U1] = primGhost[i+1][j+1][k+1][U1] * (1 + dx1 / (X1min + (i + 1) * dx1));
+				primGhost[i][j][k][U1] = primGhost[i + 1][j + 1][k + 1][U1] * (1 + dx1);
 			}
-
-			for (int k = NG + N3; k < 2 * NG + N3 - 1; k++)
-			{
-				primGhost[i+1][j+1][k+1][RHO] = primGhost[i][j][k][RHO] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				primGhost[i+1][j+1][k+1][UU] = primGhost[i][j][k][UU] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				primGhost[i+1][j+1][k+1][B1] = primGhost[i][j][k][B1] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-
-				primGhost[i+1][j+1][k+1][U2] = primGhost[i][j][k][U2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][U3] = primGhost[i][j][k][U3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][B2] = primGhost[i][j][k][B2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][B3] = primGhost[i][j][k][B3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-				primGhost[i+1][j+1][k+1][U1] = primGhost[i][j][k][U1] * (1 + dx1 / (X1min + (i + 1) * dx1));
-			}
-		}
-
-		for (int j = NG + N2; j < 2 * NG + N2 - 1; j++)
-		{
-			for (int k = NG - 1; k >= 0; k--)
-			{
-				primGhost[i][j][k][RHO] = primGhost[i+1][j+1][k+1][RHO] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				primGhost[i][j][k][UU] = primGhost[i+1][j+1][k+1][UU] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				primGhost[i][j][k][B1] = primGhost[i+1][j+1][k+1][B1] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-
-				primGhost[i][j][k][U2] = primGhost[i+1][j+1][k+1][U2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][U3] = primGhost[i+1][j+1][k+1][U3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][B2] = primGhost[i+1][j+1][k+1][B2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][B3] = primGhost[i+1][j+1][k+1][B3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-				primGhost[i][j][k][U1] = primGhost[i+1][j+1][k+1][U1] * (1 + dx1 / (X1min + (i + 1) * dx1));
-			}
-
-			for (int k = NG + N3; k < 2 * NG + N3 - 1; k++)
-			{
-				primGhost[i+1][j+1][k+1][RHO] = primGhost[i][j][k][RHO] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				primGhost[i+1][j+1][k+1][UU] = primGhost[i][j][k][UU] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				primGhost[i+1][j+1][k+1][B1] = primGhost[i][j][k][B1] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-
-				primGhost[i+1][j+1][k+1][U2] = primGhost[i][j][k][U2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][U3] = primGhost[i][j][k][U3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][B2] = primGhost[i][j][k][B2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][B3] = primGhost[i][j][k][B3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-				primGhost[i+1][j+1][k+1][U1] = primGhost[i][j][k][U1] * (1 + dx1 / (X1min + (i + 1) * dx1));
-			}
-		}
-	}
 
 #pragma omp parallel for
-	for (int i = NG + N1; i < 2 * NG + N1 - 1; i++)
-	{
-		for (int j = NG - 1; j >= 0; j--)
-		{
-			for (int k = NG - 1; k >= 0; k--)
+	for (int i = NG + N1; i < 2 * NG + N1; i++)
+		for (int j = NG; j < N2 + NG; j++)
+			for (int k = NG; k < N3 + NG; k++)
 			{
-				primGhost[i][j][k][RHO] = primGhost[i+1][j+1][k+1][RHO] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				primGhost[i][j][k][UU] = primGhost[i+1][j+1][k+1][UU] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				primGhost[i][j][k][B1] = primGhost[i+1][j+1][k+1][B1] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
+				primGhost[i][j][k][RHO] = primGhost[i - 1][j - 1][k - 1][RHO] * sqrt(-metricFuncField(i - 1, j - 1, k - 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
+				primGhost[i][j][k][UU] = primGhost[i - 1][j - 1][k - 1][UU] * sqrt(-metricFuncField(i - 1, j - 1, k - 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
+				primGhost[i][j][k][B1] = primGhost[i - 1][j - 1][k - 1][B1] * sqrt(-metricFuncField(i - 1, j - 1, k - 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
 
-				primGhost[i][j][k][U2] = primGhost[i+1][j+1][k+1][U2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][U3] = primGhost[i+1][j+1][k+1][U3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][B2] = primGhost[i+1][j+1][k+1][B2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][B3] = primGhost[i+1][j+1][k+1][B3] * (1 - dx1 / (X1min + (i + 1) * dx1));
+				primGhost[i][j][k][U2] = primGhost[i - 1][j - 1][k - 1][U2] * (1 - dx1);
+				primGhost[i][j][k][U3] = primGhost[i - 1][j - 1][k - 1][U3] * (1 - dx1);
+				primGhost[i][j][k][B2] = primGhost[i - 1][j - 1][k - 1][B2] * (1 - dx1);
+				primGhost[i][j][k][B3] = primGhost[i - 1][j - 1][k - 1][B3] * (1 - dx1);
 
-				primGhost[i][j][k][U1] = primGhost[i+1][j+1][k+1][U1] * (1 + dx1 / (X1min + (i + 1) * dx1));
+				primGhost[i][j][k][U1] = primGhost[i - 1][j - 1][k - 1][U1] * (1 + dx1);
 			}
 
-			for (int k = NG + N3; k < 2 * NG + N3 - 1; k++)
+	// 2. 鬼化X2方向
+#pragma omp parallel for
+	for(int i = 0; i < N1 + 2 * NG; i++)
+		for(int j = 0; j < NG; j++)
+			for(int k = NG; k < N3 + NG; k++)
 			{
-				primGhost[i+1][j+1][k+1][RHO] = primGhost[i][j][k][RHO] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				primGhost[i+1][j+1][k+1][UU] = primGhost[i][j][k][UU] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				primGhost[i+1][j+1][k+1][B1] = primGhost[i][j][k][B1] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-
-				primGhost[i+1][j+1][k+1][U2] = primGhost[i][j][k][U2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][U3] = primGhost[i][j][k][U3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][B2] = primGhost[i][j][k][B2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][B3] = primGhost[i][j][k][B3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-				primGhost[i+1][j+1][k+1][U1] = primGhost[i][j][k][U1] * (1 + dx1 / (X1min + (i + 1) * dx1));
-			}
-		}
-		for (int j = NG + N2; j < 2 * NG + N2 - 1; j++)
-		{
-			for (int k = NG - 1; k >= 0; k--)
-			{
-				primGhost[i][j][k][RHO] = primGhost[i+1][j+1][k+1][RHO] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				primGhost[i][j][k][UU] = primGhost[i+1][j+1][k+1][UU] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-				primGhost[i][j][k][B1] = primGhost[i+1][j+1][k+1][B1] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-
-				primGhost[i][j][k][U2] = primGhost[i+1][j+1][k+1][U2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][U3] = primGhost[i+1][j+1][k+1][U3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][B2] = primGhost[i+1][j+1][k+1][B2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i][j][k][B3] = primGhost[i+1][j+1][k+1][B3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-				primGhost[i][j][k][U1] = primGhost[i+1][j+1][k+1][U1] * (1 + dx1 / (X1min + (i + 1) * dx1));
+				// 1) 把上面的格子移动到下面
+				primGhost[i][j][k][RHO] = primGhost[i][N2 + NG - 2 + j][k][RHO];
+				primGhost[i][j][k][UU] = primGhost[i][N2 + NG - 2 + j][k][UU];
+				primGhost[i][j][k][U1] = primGhost[i][N2 + NG - 2 + j][k][U1];
+				primGhost[i][j][k][U2] = -primGhost[i][N2 + NG - 2 + j][k][U2];
+				primGhost[i][j][k][U3] = primGhost[i][N2 + NG - 2 + j][k][U3];
+				primGhost[i][j][k][B1] = primGhost[i][N2 + NG - 2 + j][k][B1];
+				primGhost[i][j][k][B2] = -primGhost[i][N2 + NG - 2 + j][k][B2];
+				primGhost[i][j][k][B3] = primGhost[i][N2 + NG - 2 + j][k][B3];
+				// 2) 把下面的格子移动到上面
+				primGhost[i][j + N2 + NG][k][RHO] = primGhost[i][j + NG][k][RHO];
+				primGhost[i][j + N2 + NG][k][UU] = primGhost[i][j + NG][k][UU];
+				primGhost[i][j + N2 + NG][k][U1] = primGhost[i][j + NG][k][U1];
+				primGhost[i][j + N2 + NG][k][U2] = -primGhost[i][j + NG][k][U2];
+				primGhost[i][j + N2 + NG][k][U3] = primGhost[i][j + NG][k][U3];
+				primGhost[i][j + N2 + NG][k][B1] = primGhost[i][j + NG][k][B1];
+				primGhost[i][j + N2 + NG][k][B2] = -primGhost[i][j + NG][k][B2];
+				primGhost[i][j + N2 + NG][k][B3] = primGhost[i][j + NG][k][B3];
 			}
 
-			for (int k = NG + N3; k < 2 * NG + N3 - 1; k++)
+	// 3. 鬼化X3方向
+#pragma omp parallel for
+	for (int i = 0; i < N1 + 2 * NG; i++)
+		for (int j = 0; j < N2 + 2 * NG; j++)
+			for (int k = 0; k < NG; k++)
 			{
-				primGhost[i+1][j+1][k+1][RHO] = primGhost[i][j][k][RHO] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				primGhost[i+1][j+1][k+1][UU] = primGhost[i][j][k][UU] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-				primGhost[i+1][j+1][k+1][B1] = primGhost[i][j][k][B1] * sqrt(-metricFuncField(i, j, k).m.determinant()) / sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant());
-
-				primGhost[i+1][j+1][k+1][U2] = primGhost[i][j][k][U2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][U3] = primGhost[i][j][k][U3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][B2] = primGhost[i][j][k][B2] * (1 - dx1 / (X1min + (i + 1) * dx1));
-				primGhost[i+1][j+1][k+1][B3] = primGhost[i][j][k][B3] * (1 - dx1 / (X1min + (i + 1) * dx1));
-
-				primGhost[i+1][j+1][k+1][U1] = primGhost[i][j][k][U1] * (1 + dx1 / (X1min + (i + 1) * dx1));
+				// 1) 把上面的格子移动到下面
+				primGhost[i][j][k][RHO] = primGhost[i][j][N3 + NG - 2 + k][RHO];
+				primGhost[i][j][k][UU] = primGhost[i][j][N3 + NG - 2 + k][UU];
+				primGhost[i][j][k][U1] = primGhost[i][j][N3 + NG - 2 + k][U1];
+				primGhost[i][j][k][U2] = -primGhost[i][j][N3 + NG - 2 + k][U2];
+				primGhost[i][j][k][U3] = primGhost[i][j][N3 + NG - 2 + k][U3];
+				primGhost[i][j][k][B1] = primGhost[i][j][N3 + NG - 2 + k][B1];
+				primGhost[i][j][k][B2] = -primGhost[i][j][N3 + NG - 2 + k][B2];
+				primGhost[i][j][k][B3] = primGhost[i][j][N3 + NG - 2 + k][B3];
+				// 2) 把下面的格子移动到上面
+				primGhost[i][j][k][RHO] = primGhost[i][j][k + N3 + NG][RHO];
+				primGhost[i][j][k][UU] = primGhost[i][j][k + N3 + NG][UU];
+				primGhost[i][j][k][U1] = primGhost[i][j][k + N3 + NG][U1];
+				primGhost[i][j][k][U2] = -primGhost[i][j][k + N3 + NG][U2];
+				primGhost[i][j][k][U3] = primGhost[i][j][k + N3 + NG][U3];
+				primGhost[i][j][k][B1] = primGhost[i][j][k + N3 + NG][B1];
+				primGhost[i][j][k][B2] = -primGhost[i][j][k + N3 + NG][B2];
+				primGhost[i][j][k][B3] = primGhost[i][j][k + N3 + NG][B3];
 			}
-		}
-	}
+
 }
 
 void interpolate() {
 #pragma omp parallel for
-	for (int i = 0; i < N1; i++)
-		for (int j = 0; j < N2; j++)
-			for (int k = 0; k < N3; k++)
+	for (int i = 0; i < N1 + 1; i++)
+		for (int j = 0; j < N2 + 1; j++)
+			for (int k = 0; k < N3 + 1; k++)
 				for (int index = 0; index < NPRIM; index++)
 				{
-					primL1[i][j][k][index] = primGhost[i + NG][j + NG][k + NG][index] - MC((primGhost[i + NG + 1][j + NG][k + NG][index] - primGhost[i + NG - 1][j + NG][k + NG][index]) / (2 * dx1),
+					primLR[LEFT][0][i][j][k][index] = primGhost[i + NG][j + NG][k + NG][index] - MC((primGhost[i + NG + 1][j + NG][k + NG][index] - primGhost[i + NG - 1][j + NG][k + NG][index]) / (2 * dx1),
 						2 * (primGhost[i + NG + 1][j + NG][k + NG][index] - primGhost[i + NG][j + NG][k + NG][index]) / (dx1),
 						2 * (primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG - 1][j + NG][k + NG][index]) / (dx1)) * dx1 / 2;
-					primR1[i][j][k][index] = primGhost[i + NG - 1][j + NG][k + NG][index] + MC((primGhost[i + NG][j + NG][k + NG][index] - primGhost[i][j + NG][k + NG][index]) / (2 * dx1),
+					primLR[RIGHT][1][i][j][k][index] = primGhost[i + NG - 1][j + NG][k + NG][index] + MC((primGhost[i + NG][j + NG][k + NG][index] - primGhost[i][j + NG][k + NG][index]) / (2 * dx1),
 						2 * (primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG - 1][j + NG][k + NG][index]) / (dx1),
 						2 * (primGhost[i + NG - 1][j + NG][k + NG][index] - primGhost[i][j + NG][k + NG][index]) / (dx1)) * dx1 / 2;
 
-					primL2[i][j][k][index] = primGhost[i + NG][j + NG + 1][k + NG][index] - MC((primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG][j + NG - 1][k + NG][index]) / (2 * dx2),
+					primLR[LEFT][1][i][j][k][index] = primGhost[i + NG][j + NG + 1][k + NG][index] - MC((primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG][j + NG - 1][k + NG][index]) / (2 * dx2),
 						2 * (primGhost[i + NG][j + NG + 1][k + NG][index] - primGhost[i + NG][j + NG][k + NG][index]) / (dx2),
 						2 * (primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG][j + NG - 1][k + NG][index]) / (dx2)) * dx2 / 2;
-					primR2[i][j][k][index] = primGhost[i + NG][j + NG][k + NG][index] + MC((primGhost[i + NG][j + NG + 1][k + NG][index] - primGhost[i + NG][j][k + NG][index]) / (2 * dx2),
+					primLR[RIGHT][1][i][j][k][index] = primGhost[i + NG][j + NG][k + NG][index] + MC((primGhost[i + NG][j + NG + 1][k + NG][index] - primGhost[i + NG][j][k + NG][index]) / (2 * dx2),
 						2 * (primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG][j + NG - 1][k + NG][index]) / (dx2),
 						2 * (primGhost[i + NG][j + NG - 1][k + NG][index] - primGhost[i + NG][j][k + NG][index]) / (dx2)) * dx2 / 2;
 
-					primL3[i][j][k][index] = primGhost[i + NG][j + NG][k + NG][index] - MC((primGhost[i + NG][j + NG][k + NG + 1][index] - primGhost[i + NG][j + NG][k + NG - 1][index]) / (2 * dx3),
+					primLR[LEFT][2][i][j][k][index] = primGhost[i + NG][j + NG][k + NG][index] - MC((primGhost[i + NG][j + NG][k + NG + 1][index] - primGhost[i + NG][j + NG][k + NG - 1][index]) / (2 * dx3),
 						2 * (primGhost[i + NG][j + NG][k + NG + 1][index] - primGhost[i + NG][j + NG][k + NG][index]) / (dx3),
 						2 * (primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG][j + NG][k + NG - 1][index]) / (dx3)) * dx3 / 2;
-					primR3[i][j][k][index] = primGhost[i + NG][j + NG][k + NG - 1][index] + MC((primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG][j + NG][k][index]) / (2 * dx3),
+					primLR[RIGHT][2][i][j][k][index] = primGhost[i + NG][j + NG][k + NG - 1][index] + MC((primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG][j + NG][k][index]) / (2 * dx3),
 						2 * (primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG][j + NG][k + NG - 1][index]) / (dx3),
 						2 * (primGhost[i + NG][j + NG][k + NG - 1][index] - primGhost[i + NG][j + NG][k][index]) / (dx3)) * dx3 / 2;
 				}
 }
 
-void prim2con(double prim[N1][N2][N3][NPRIM], double con[N1][N2][N3][8]) {
+void primLR2conLR() {
+#pragma omp parallel for
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for(int LR = 0; LR < 2; LR++)
+					for(int comp = 0; comp < 3; comp++)
+					{
+						Eigen::Vector3d u{ primLR[LR][comp][i][j][k][U1] ,primLR[LR][comp][i][j][k][U2] ,primLR[LR][comp][i][j][k][U3] };
+						Eigen::Vector3d B{ primLR[LR][comp][i][j][k][B1] ,primLR[LR][comp][i][j][k][B2] ,primLR[LR][comp][i][j][k][B3] };
+						auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
+						auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
+						double Gamma = sqrt(1 + usq);
+						auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
+						auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
+						conLR[LR][comp][i][j][k][0] = Gamma * primLR[LR][comp][i][j][k][RHO];
+						conLR[LR][comp][i][j][k][1] = (primLR[LR][comp][i][j][k][RHO] + gam / (gam - 1) * primLR[LR][comp][i][j][k][UU]) * pow(Gamma, 2) - primLR[LR][comp][i][j][k][UU] + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2)) - Gamma * primLR[LR][comp][i][j][k][RHO];
+						conLR[LR][comp][i][j][k][2] = (primLR[LR][comp][i][j][k][RHO] + gam / (gam - 1) * primLR[LR][comp][i][j][k][UU]) * pow(Gamma, 2) * primLR[LR][comp][i][j][k][U1] + Bsq * primLR[LR][comp][i][j][k][U1] - Bv * primLR[LR][comp][i][j][k][B1];
+						conLR[LR][comp][i][j][k][3] = (primLR[LR][comp][i][j][k][RHO] + gam / (gam - 1) * primLR[LR][comp][i][j][k][UU]) * pow(Gamma, 2) * primLR[LR][comp][i][j][k][U2] + Bsq * primLR[LR][comp][i][j][k][U2] - Bv * primLR[LR][comp][i][j][k][B2];
+						conLR[LR][comp][i][j][k][4] = (primLR[LR][comp][i][j][k][RHO] + gam / (gam - 1) * primLR[LR][comp][i][j][k][UU]) * pow(Gamma, 2) * primLR[LR][comp][i][j][k][U3] + Bsq * primLR[LR][comp][i][j][k][U3] - Bv * primLR[LR][comp][i][j][k][B3];
+						conLR[LR][comp][i][j][k][5] = primLR[LR][comp][i][j][k][B1];
+						conLR[LR][comp][i][j][k][6] = primLR[LR][comp][i][j][k][B2];
+						conLR[LR][comp][i][j][k][7] = primLR[LR][comp][i][j][k][B3];
+					}
+}
+
+void primLR2srcLR() {
+#pragma omp parallel for
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for (int LR = 0; LR < 2; LR++)
+					for (int comp = 0; comp < 3; comp++)
+					{
+						Eigen::Vector3d u{ primLR[LR][comp][i][j][k][U1] ,primLR[LR][comp][i][j][k][U2] ,primLR[LR][comp][i][j][k][U3] };
+						Eigen::Vector3d B{ primLR[LR][comp][i][j][k][B1] ,primLR[LR][comp][i][j][k][B2] ,primLR[LR][comp][i][j][k][B3] };
+						Eigen::Vector3d S{ conLR[LR][comp][i][j][k][2] ,conLR[LR][comp][i][j][k][3] ,conLR[LR][comp][i][j][k][4] };
+						auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
+						auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
+						double Gamma = sqrt(1 + usq);
+						auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
+						auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
+						auto metric = metricFuncHalfField[comp](i, j, k);
+						auto metricDiff = metricDiffHalfField[comp];
+						auto Sb = dot(i, j, k, S, metricDiff(i, j, k, 1).betaVec(), metricFuncHalfField[comp]);
+						// W^{ij}
+						Eigen::Matrix3d W = S * (u / Gamma).transpose() + (prim[i][j][k][UU] + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2))) * metric.gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - Bv * u / Gamma * B.transpose();
+						Eigen::Matrix3d betaDiff;
+						betaDiff << metricDiff(i, j, k, 1).betaVec()(0), metricDiff(i, j, k, 2).betaVec()(0), metricDiff(i, j, k, 3).betaVec()(0),
+							metricDiff(i, j, k, 1).betaVec()(1), metricDiff(i, j, k, 2).betaVec()(1), metricDiff(i, j, k, 3).betaVec()(1),
+							metricDiff(i, j, k, 1).betaVec()(2), metricDiff(i, j, k, 2).betaVec()(2), metricDiff(i, j, k, 3).betaVec()(2);
+						srcLR[LR][comp][i][j][k][0] = 0;
+						srcLR[LR][comp][i][j][k][1] = 0.5 * contract(W, (metric.betaVec()(0) * metricDiff(i, j, k, 1).gamma() + metric.betaVec()(1) * metricDiff(i, j, k, 2).gamma() + metric.betaVec()(2) * metricDiff(i, j, k, 3).gamma()))
+							+ contract(W * metric.gamma(), betaDiff)
+							- (metric.gamma().inverse() * S)(0) * alphaDiffHalfField[comp][i][j][k][1] - (metric.gamma().inverse() * S)(1) * alphaDiffHalfField[comp][i][j][k][2] - (metric.gamma().inverse() * S)(2) * alphaDiffHalfField[comp][i][j][k][3];
+						srcLR[LR][comp][i][j][k][2] = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 1).gamma()) + Sb - (con[i][j][k][0] + con[i][j][k][1]) * alphaDiffHalfField[comp][i][j][k][1];
+						srcLR[LR][comp][i][j][k][3] = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 2).gamma()) + Sb - (con[i][j][k][0] + con[i][j][k][1]) * alphaDiffHalfField[comp][i][j][k][2];
+						srcLR[LR][comp][i][j][k][4] = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 3).gamma()) + Sb - (con[i][j][k][0] + con[i][j][k][1]) * alphaDiffHalfField[comp][i][j][k][3];
+						srcLR[LR][comp][i][j][k][5] = 0;
+						srcLR[LR][comp][i][j][k][6] = 0;
+						srcLR[LR][comp][i][j][k][7] = 0;
+					}
+}
+
+void primLR2fluxLR() {
+#pragma omp parallel for
+	for (int i = 0; i < N1 + 1; i++)
+		for (int j = 0; j < N2 + 1; j++)
+			for (int k = 0; k < N3 + 1; k++)
+				for (int LR = 0; LR < 2; LR++)
+					for (int comp = 0; comp < 3; comp++)
+					{
+						Eigen::Vector3d u{ primLR[LR][comp][i][j][k][U1] ,primLR[LR][comp][i][j][k][U2] ,primLR[LR][comp][i][j][k][U3] };
+						Eigen::Vector3d B{ primLR[LR][comp][i][j][k][B1] ,primLR[LR][comp][i][j][k][B2] ,primLR[LR][comp][i][j][k][B3] };
+						Eigen::Vector3d S{ conLR[LR][comp][i][j][k][2] ,conLR[LR][comp][i][j][k][3] ,conLR[LR][comp][i][j][k][4] };
+						auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
+						auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
+						double Gamma = sqrt(1 + usq);
+						auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
+						auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
+						auto metric = metricFuncHalfField[comp](i, j, k);
+						auto V = metric.alpha() * u / Gamma - metric.betaVec();
+						// W^{ij}
+						Eigen::Matrix3d W = S * (u / Gamma).transpose() + (primLR[LR][comp][i][j][k][UU] + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2))) * metric.gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - Bv * u / Gamma * B.transpose();
+						fluxLR[LR][comp][i][j][k][0] = V(comp) * conLR[LR][comp][i][j][k][0];
+						fluxLR[LR][comp][i][j][k][1] = metric.alpha() * (conLR[LR][comp][i][j][k][2 + comp] - u(comp) / Gamma * conLR[LR][comp][i][j][k][0]) - metric.betaVec()(comp) * conLR[LR][comp][i][j][k][1];
+						fluxLR[LR][comp][i][j][k][2] = (metric.alpha() * W * metric.gamma())(comp, 0) - metric.betaVec()(comp) * conLR[LR][comp][i][j][k][2];
+						fluxLR[LR][comp][i][j][k][3] = (metric.alpha() * W * metric.gamma())(comp, 1) - metric.betaVec()(comp) * conLR[LR][comp][i][j][k][3];
+						fluxLR[LR][comp][i][j][k][4] = (metric.alpha() * W * metric.gamma())(comp, 2) - metric.betaVec()(comp) * conLR[LR][comp][i][j][k][4];
+						fluxLR[LR][comp][i][j][k][5] = V(comp) * conLR[LR][comp][i][j][k][5] - V(0) * conLR[LR][comp][i][j][k][5 + comp];
+						fluxLR[LR][comp][i][j][k][6] = V(comp) * conLR[LR][comp][i][j][k][6] - V(1) * conLR[LR][comp][i][j][k][5 + comp];
+						fluxLR[LR][comp][i][j][k][7] = V(comp) * conLR[LR][comp][i][j][k][7] - V(2) * conLR[LR][comp][i][j][k][5 + comp];
+					}
+}
+
+void primLR2cLR() {
+#pragma omp parallel for
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for (int PN = 0; PN < 2; PN++)
+					for (int LR = 0; LR < 2; LR++)
+						for (int comp = 0; comp < 3; comp++)
+							if (prim[i][j][k][RHO])
+							{
+								Eigen::Vector3d u{ primLR[LR][comp][i][j][k][U1] ,primLR[LR][comp][i][j][k][U2] ,primLR[LR][comp][i][j][k][U3] };
+								Eigen::Vector3d B{ primLR[LR][comp][i][j][k][B1] ,primLR[LR][comp][i][j][k][B2] ,primLR[LR][comp][i][j][k][B3] };
+								auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
+								auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
+								double Gamma = sqrt(1 + usq);
+								auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
+								auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
+								auto metric = metricFuncHalfField[comp](i, j, k);
+								auto u0 = Gamma / metric.alpha();
+								Eigen::Vector3d ui = { Gamma * (prim[i][j][k][U1] - metric.betaVec()(0)),
+												Gamma * (prim[i][j][k][U2] - metric.betaVec()(1)),
+												Gamma * (prim[i][j][k][U3] - metric.betaVec()(2)) };
+								auto cs_square = gam * prim[i][j][k][UU] / (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]);
+								auto cA_square = (Bsq * (1 - vsq) + pow(Bv, 2)) / (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU] + Bsq * (1 - vsq) + pow(Bv, 2));
+								auto vf_square = cA_square + cs_square - cA_square * cs_square;
+								auto metricInv = metric.m.inverse();
+								c[PN][LR][comp][i][j][k] = (pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0) + (2 * PN - 1) * sqrt(abs(
+									pow((pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0), 2)
+									- (vf_square * metricInv(comp, comp) - (1 - vf_square) * ui(comp) * ui(comp)) / (vf_square * metricInv(0, 0) - (1 - vf_square) * u0 * u0)
+								));
+							}
+}
+
+void calFluxHHL() {
+#pragma omp parallel for
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for (int LR = 0; LR < 2; LR++)
+					for (int comp = 0; comp < 3; comp++)
+						for (int l = 0; l < 8; l++)
+						{
+							auto c_max = max(0, c[POS][RIGHT][comp][i][j][k], c[POS][LEFT][comp][i][j][k]);
+							auto c_min = -min(0, c[NEG][LEFT][comp][i][j][k], c[NEG][LEFT][comp][i][j][k]);
+							fluxHLL[comp][i][j][k][l] = c_max + c_min ? (c_min * fluxLR[RIGHT][comp][i][j][k][l] + c_max * fluxLR[LEFT][comp][i][j][k][l] - c_max * c_min * (conLR[RIGHT][comp][i][j][k][l] - conLR[LEFT][comp][i][j][k][l])) / (c_max + c_min) : 0;
+						}
+}
+
+void calFluxTVDLF() {
+#pragma omp parallel for
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for (int LR = 0; LR < 2; LR++)
+					for (int comp = 0; comp < 3; comp++)
+						for (int l = 0; l < 8; l++)
+						{
+							auto c_max = max(0, c[POS][RIGHT][comp][i][j][k], c[POS][LEFT][comp][i][j][k]);
+							auto c_min = -min(0, c[NEG][LEFT][comp][i][j][k], c[NEG][LEFT][comp][i][j][k]);
+							auto c = max(c_max, c_min);
+							fluxTVDLF[comp][i][j][k][l] = 0.5 * (fluxLR[RIGHT][comp][i][j][k][l] + fluxLR[LEFT][comp][i][j][k][l]) - 0.5 * c * (conLR[RIGHT][comp][i][j][k][l] - conLR[LEFT][comp][i][j][k][l]);
+						}
+}
+
+void prim2con()
+{
 #pragma omp parallel for
 	for (int i = 0; i < N1; i++)
 		for (int j = 0; j < N2; j++)
@@ -389,25 +464,67 @@ void prim2con(double prim[N1][N2][N3][NPRIM], double con[N1][N2][N3][8]) {
 			{
 				Eigen::Vector3d u{ prim[i][j][k][U1] ,prim[i][j][k][U2] ,prim[i][j][k][U3] };
 				Eigen::Vector3d B{ prim[i][j][k][B1] ,prim[i][j][k][B2] ,prim[i][j][k][B3] };
-				double Gamma = sqrt(1 + square(i, j, k, u));
+				auto usq = square(i + NG, j + NG, k + NG, u, metricFuncField);
+				auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
+				double Gamma = sqrt(1 + usq);
+				auto vsq = square(i + NG, j + NG, k + NG, u / Gamma, metricFuncField);
+				auto Bv = dot(i + NG, j + NG, k + NG, u / Gamma, B, metricFuncField);
 				con[i][j][k][0] = Gamma * prim[i][j][k][RHO];
-				con[i][j][k][1] = (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]) * pow(Gamma, 2) - prim[i][j][k][UU] + 0.5 * (square(i, j, k, B) * (1 + square(i, j, k, u / Gamma) - pow(dot(i, j, k, B, u / Gamma), 2))) - Gamma * prim[i][j][k][RHO];
-				con[i][j][k][2] = (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]) * pow(Gamma, 2) * prim[i][j][k][U1] + square(i, j, k, B) * prim[i][j][k][U1] - dot(i, j, k, B, u / Gamma) * prim[i][j][k][B1];
-				con[i][j][k][3] = (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]) * pow(Gamma, 2) * prim[i][j][k][U2] + square(i, j, k, B) * prim[i][j][k][U2] - dot(i, j, k, B, u / Gamma) * prim[i][j][k][B2];
-				con[i][j][k][4] = (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]) * pow(Gamma, 2) * prim[i][j][k][U3] + square(i, j, k, B) * prim[i][j][k][U3] - dot(i, j, k, B, u / Gamma) * prim[i][j][k][B3];
+				con[i][j][k][1] = (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]) * pow(Gamma, 2) - prim[i][j][k][UU] + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2)) - Gamma * prim[i][j][k][RHO];
+				con[i][j][k][2] = (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]) * pow(Gamma, 2) * prim[i][j][k][U1] + Bsq * prim[i][j][k][U1] - Bv * prim[i][j][k][B1];
+				con[i][j][k][3] = (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]) * pow(Gamma, 2) * prim[i][j][k][U2] + Bsq * prim[i][j][k][U2] - Bv * prim[i][j][k][B2];
+				con[i][j][k][4] = (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]) * pow(Gamma, 2) * prim[i][j][k][U3] + Bsq * prim[i][j][k][U3] - Bv * prim[i][j][k][B3];
 				con[i][j][k][5] = prim[i][j][k][B1];
 				con[i][j][k][6] = prim[i][j][k][B2];
 				con[i][j][k][7] = prim[i][j][k][B3];
 			}
 }
 
+void prim2src() {
+#pragma omp parallel for
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+			{
+				Eigen::Vector3d u{ prim[i][j][k][U1] ,prim[i][j][k][U2] ,prim[i][j][k][U3] };
+				Eigen::Vector3d B{ prim[i][j][k][B1] ,prim[i][j][k][B2] ,prim[i][j][k][B3] };
+				Eigen::Vector3d S{ con[i][j][k][2] ,con[i][j][k][3] ,con[i][j][k][4] };
+				auto usq = square(i + NG, j + NG, k + NG, u, metricFuncField);
+				auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
+				double Gamma = sqrt(1 + usq);
+				auto vsq = square(i + NG, j + NG, k + NG, u / Gamma, metricFuncField);
+				auto Bv = dot(i + NG, j + NG, k + NG, u / Gamma, B, metricFuncField);
+				auto metric = metricFuncField(i + NG, j + NG, k + NG);
+				auto metricDiff = metricDiffField;
+				auto Sb = dot(i + NG, j + NG, k + NG, S, metricDiff(i, j, k, 1).betaVec(), metricFuncField);
+				// W^{ij}
+				Eigen::Matrix3d W = S * (u / Gamma).transpose() + (prim[i][j][k][UU] + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2))) * metric.gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - Bv * u / Gamma * B.transpose();
+				Eigen::Matrix3d betaDiff;
+				betaDiff << metricDiff(i, j, k, 1).betaVec()(0), metricDiff(i, j, k, 2).betaVec()(0), metricDiff(i, j, k, 3).betaVec()(0),
+					metricDiff(i, j, k, 1).betaVec()(1), metricDiff(i, j, k, 2).betaVec()(1), metricDiff(i, j, k, 3).betaVec()(1),
+					metricDiff(i, j, k, 1).betaVec()(2), metricDiff(i, j, k, 2).betaVec()(2), metricDiff(i, j, k, 3).betaVec()(2);
+				src[i][j][k][0] = 0;
+				src[i][j][k][1] = 0.5 * contract(W, (metric.betaVec()(0) * metricDiff(i, j, k, 1).gamma() + metric.betaVec()(1) * metricDiff(i, j, k, 2).gamma() + metric.betaVec()(2) * metricDiff(i, j, k, 3).gamma()))
+					+ contract(W * metric.gamma(), betaDiff)
+					- (metric.gamma().inverse() * S)(0) * alphaDiffField[i][j][k][1] - (metric.gamma().inverse() * S)(1) * alphaDiffField[i][j][k][2] - (metric.gamma().inverse() * S)(2) * alphaDiffField[i][j][k][3];
+				src[i][j][k][2] = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 1).gamma()) + Sb - (con[i][j][k][0] + con[i][j][k][1]) * alphaDiffField[i][j][k][1];
+				src[i][j][k][3] = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 2).gamma()) + Sb - (con[i][j][k][0] + con[i][j][k][1]) * alphaDiffField[i][j][k][2];
+				src[i][j][k][4] = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 3).gamma()) + Sb - (con[i][j][k][0] + con[i][j][k][1]) * alphaDiffField[i][j][k][3];
+				src[i][j][k][5] = 0;
+				src[i][j][k][6] = 0;
+				src[i][j][k][7] = 0;
+			}
+}
+
 double f(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::Vector3d B, double x) {
-	auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / x) / pow(x + square(i, j, k, B), 2));
-	return x - (gam - 1) / gam * (x - Gamma * D) / pow(Gamma, 2) - tau - D + square(i, j, k, B) - 0.5 * (square(i, j, k, B / Gamma) + pow(dot(i, j, k, S, B), 2) / pow(x, 2));
+	auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
+	auto SB = dot(i + NG, j + NG, k + NG, S, B, metricFuncField);
+	auto Gamma = 1 / sqrt(1 - square(i, j, k, S + SB * B / ksi[i][j][k], metricFuncField) / pow(ksi[i][j][k] + Bsq, 2));
+	return x - (gam - 1) / gam * (x - Gamma * D) / pow(Gamma, 2) - tau - D + Bsq - 0.5 * (Bsq / pow(Gamma, 2) + pow(SB, 2) / pow(x, 2));
 }
 
 double df(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::Vector3d B, double x) {
-	return (f(i, j, k, D, tau, S, B, x + SMALL) - f(i, j, k, D, tau, S, B, x - SMALL)) / (2 * SMALL);
+	return (f(i, j, k, D, tau, S, B, x + SMALL) - f(i, j, k, D, tau, S, B, x)) / SMALL;
 }
 
 void con2prim(double con[N1][N2][N3][8]) {
@@ -418,6 +535,8 @@ void con2prim(double con[N1][N2][N3][8]) {
 			{
 				Eigen::Vector3d S{ con[i][j][k][2] ,con[i][j][k][3] ,con[i][j][k][4] };
 				Eigen::Vector3d B{ con[i][j][k][5] ,con[i][j][k][6] ,con[i][j][k][7] };
+				auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
+				auto SB = dot(i + NG, j + NG, k + NG, S, B, metricFuncField);
 				auto D = con[i][j][k][0];
 				auto tau = con[i][j][k][1];
 				auto x0 = ksi[i][j][k];
@@ -431,143 +550,16 @@ void con2prim(double con[N1][N2][N3][8]) {
 				if (x0 <= SMALL || isnan(x0) || isinf(x0))
 					continue;
 				ksi[i][j][k] = x0;
-				auto Gamma = 1 / sqrt(1 - square(i, j, k, S + dot(i, j, k, S, B) * B / ksi[i][j][k]) / pow(ksi[i][j][k] + square(i, j, k, B), 2));
+				auto Gamma = 1 / sqrt(1 - square(i, j, k, S + SB * B / ksi[i][j][k], metricFuncField) / pow(ksi[i][j][k] + Bsq, 2));
 				prim[i][j][k][RHO] = D / Gamma;
 				prim[i][j][k][UU] = (gam - 1) / gam * (ksi[i][j][k] - Gamma * D) / pow(Gamma, 2);
-				prim[i][j][k][U1] = (S(0) + dot(i, j, k, S, B) * B(0) / ksi[i][j][k]) / (ksi[i][j][k] + square(i, j, k, B)) * Gamma;
-				prim[i][j][k][U2] = (S(1) + dot(i, j, k, S, B) * B(1) / ksi[i][j][k]) / (ksi[i][j][k] + square(i, j, k, B)) * Gamma;
-				prim[i][j][k][U3] = (S(2) + dot(i, j, k, S, B) * B(2) / ksi[i][j][k]) / (ksi[i][j][k] + square(i, j, k, B)) * Gamma;
+				prim[i][j][k][U0] = Gamma / metricFuncField(i + NG, j + NG, k + NG).alpha();
+				prim[i][j][k][U1] = (S(0) + SB * B(0) / ksi[i][j][k]) / (ksi[i][j][k] + Bsq) * Gamma;
+				prim[i][j][k][U2] = (S(1) + SB * B(1) / ksi[i][j][k]) / (ksi[i][j][k] + Bsq) * Gamma;
+				prim[i][j][k][U3] = (S(2) + SB * B(2) / ksi[i][j][k]) / (ksi[i][j][k] + Bsq) * Gamma;
 				prim[i][j][k][B1] = B(0);
 				prim[i][j][k][B2] = B(1);
 				prim[i][j][k][B3] = B(2);
+				prim[i][j][k][BSQ] = Bsq;
 			}
 }
-
-
-void prim2flux(double prim[N1][N2][N3][NPRIM], double con[N1][N2][N3][8], double flux[N1][N2][N3][8], short comp) {
-#pragma omp parallel for
-	for (int i = 0; i < N1; i++)
-		for (int j = 0; j < N2; j++)
-			for (int k = 0; k < N3; k++)
-			{
-				Eigen::Vector3d u{ prim[i][j][k][U1] ,prim[i][j][k][U2] ,prim[i][j][k][U3] };
-				Eigen::Vector3d B{ prim[i][j][k][B1] ,prim[i][j][k][B2] ,prim[i][j][k][B3] };
-				Eigen::Vector3d S{ con[i][j][k][2] ,con[i][j][k][3] ,con[i][j][k][4] };
-				double Gamma = sqrt(1 + square(i, j, k, u));
-				Eigen::Matrix3d W = S * (u / Gamma).transpose() + (prim[i][j][k][UU] + 0.5 * (square(i, j, k, B) * (1 + square(i, j, k, u / Gamma)) - pow(dot(i, j, k, B, u / Gamma), 2))) * metricFuncField(i, j, k).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, u / Gamma) * u / Gamma * B.transpose();
-				flux[i][j][k][0] = (metricFuncField(i, j, k).alpha() * u(comp) / Gamma - metricFuncField(i, j, k).betaVec()(comp)) * con[i][j][k][0];
-				flux[i][j][k][1] = metricFuncField(i, j, k).alpha() * (con[i][j][k][2 + comp] - u(comp) / Gamma * con[i][j][k][0]) - metricFuncField(i, j, k).betaVec()(comp) * con[i][j][k][1];
-				flux[i][j][k][2] = (metricFuncField(i, j, k).alpha() * W * metricFuncField(i, j, k).gamma())(comp, 0) - metricFuncField(i, j, k).betaVec()(comp) * con[i][j][k][2];
-				flux[i][j][k][3] = (metricFuncField(i, j, k).alpha() * W * metricFuncField(i, j, k).gamma())(comp, 1) - metricFuncField(i, j, k).betaVec()(comp) * con[i][j][k][3];
-				flux[i][j][k][4] = (metricFuncField(i, j, k).alpha() * W * metricFuncField(i, j, k).gamma())(comp, 2) - metricFuncField(i, j, k).betaVec()(comp) * con[i][j][k][4];
-				flux[i][j][k][5] = (metricFuncField(i, j, k).alpha() * u(comp) / Gamma - metricFuncField(i, j, k).betaVec()(comp)) * con[i][j][k][5] - (metricFuncField(i, j, k).alpha() * u(0) / Gamma - metricFuncField(i, j, k).betaVec()(0)) * con[i][j][k][5 + comp];
-				flux[i][j][k][6] = (metricFuncField(i, j, k).alpha() * u(comp) / Gamma - metricFuncField(i, j, k).betaVec()(comp)) * con[i][j][k][6] - (metricFuncField(i, j, k).alpha() * u(1) / Gamma - metricFuncField(i, j, k).betaVec()(1)) * con[i][j][k][5 + comp];
-				flux[i][j][k][7] = (metricFuncField(i, j, k).alpha() * u(comp) / Gamma - metricFuncField(i, j, k).betaVec()(comp)) * con[i][j][k][7] - (metricFuncField(i, j, k).alpha() * u(2) / Gamma - metricFuncField(i, j, k).betaVec()(2)) * con[i][j][k][5 + comp];
-			}
-}
-
-void prim2src(double prim[N1][N2][N3][NPRIM], double con[N1][N2][N3][8], double src[N1][N2][N3][8]) {
-#pragma omp parallel for
-	for (int i = 0; i < N1; i++)
-		for (int j = 0; j < N2; j++)
-			for (int k = 0; k < N3; k++)
-			{
-				Eigen::Vector3d u{ prim[i][j][k][U1] ,prim[i][j][k][U2] ,prim[i][j][k][U3] };
-				Eigen::Vector3d B{ prim[i][j][k][B1] ,prim[i][j][k][B2] ,prim[i][j][k][B3] };
-				Eigen::Vector3d S{ con[i][j][k][2] ,con[i][j][k][3] ,con[i][j][k][4] };
-				Eigen::Matrix3d betaDiff;
-				betaDiff << metricDiffField(i, j, k, 1).betaVec()(0), metricDiffField(i, j, k, 2).betaVec()(0), metricDiffField(i, j, k, 3).betaVec()(0),
-					metricDiffField(i, j, k, 1).betaVec()(1), metricDiffField(i, j, k, 2).betaVec()(1), metricDiffField(i, j, k, 3).betaVec()(1),
-					metricDiffField(i, j, k, 1).betaVec()(2), metricDiffField(i, j, k, 2).betaVec()(2), metricDiffField(i, j, k, 3).betaVec()(2);
-				double Gamma = sqrt(1 + square(i, j, k, u));
-				Eigen::Matrix3d W = S * (u / Gamma).transpose() + (prim[i][j][k][UU] + 0.5 * (square(i, j, k, B) * (1 + square(i, j, k, u / Gamma)) - pow(dot(i, j, k, B, u / Gamma), 2))) * metricFuncField(i, j, k).gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - dot(i, j, k, B, u / Gamma) * u / Gamma * B.transpose();
-				src[i][j][k][0] = 0;
-				src[i][j][k][1] = 0.5 * contract(W, (metricFuncField(i, j, k).betaVec()(0) * metricDiffField(i, j, k, 1).gamma() + metricFuncField(i, j, k).betaVec()(1) * metricDiffField(i, j, k, 2).gamma() + metricFuncField(i, j, k).betaVec()(2) * metricDiffField(i, j, k, 3).gamma()))
-					+ contract(W * metricFuncField(i, j, k).gamma(), betaDiff)
-					- (metricFuncField(i, j, k).gamma().inverse() * S)(0) * alphaDiffField[i][j][k][1] - (metricFuncField(i, j, k).gamma().inverse() * S)(1) * alphaDiffField[i][j][k][2] - (metricFuncField(i, j, k).gamma().inverse() * S)(2) * alphaDiffField[i][j][k][3];
-				src[i][j][k][2] = 0.5 * metricFuncField(i, j, k).alpha() * contract(W, metricDiffField(i, j, k, 1).gamma()) + dot(i, j, k, S, metricDiffField(i, j, k, 1).betaVec()) - (con[i][j][k][0] + con[i][j][k][1]) * alphaDiffField[i][j][k][1];
-				src[i][j][k][3] = 0.5 * metricFuncField(i, j, k).alpha() * contract(W, metricDiffField(i, j, k, 2).gamma()) + dot(i, j, k, S, metricDiffField(i, j, k, 2).betaVec()) - (con[i][j][k][0] + con[i][j][k][1]) * alphaDiffField[i][j][k][2];
-				src[i][j][k][4] = 0.5 * metricFuncField(i, j, k).alpha() * contract(W, metricDiffField(i, j, k, 3).gamma()) + dot(i, j, k, S, metricDiffField(i, j, k, 3).betaVec()) - (con[i][j][k][0] + con[i][j][k][1]) * alphaDiffField[i][j][k][3];
-				src[i][j][k][5] = 0;
-				src[i][j][k][6] = 0;
-				src[i][j][k][7] = 0;
-			}
-}
-
-void prim2c(double prim[N1][N2][N3][NPRIM], double c[N1][N2][N3], Eigen::Tensor<Metric, 3>& metricFuncHalfField, short sign, short comp) {
-#pragma omp parallel for
-	for (int i = 0; i < N1; i++)
-		for (int j = 0; j < N2; j++)
-			for (int k = 0; k < N3; k++)
-				if (prim[i][j][k][RHO])
-				{
-					Eigen::Vector3d u{ prim[i][j][k][U1] ,prim[i][j][k][U2] ,prim[i][j][k][U3] };
-					Eigen::Vector3d B{ prim[i][j][k][B1] ,prim[i][j][k][B2] ,prim[i][j][k][B3] };
-					double Gamma = sqrt(1 + square(i, j, k, u));
-					auto u0 = Gamma / metricFuncField(i, j, k).alpha();
-					Eigen::Vector3d ui = { Gamma * (prim[i][j][k][U1] - metricFuncField(i, j, k).betaVec()(0)),
-									Gamma * (prim[i][j][k][U2] - metricFuncField(i, j, k).betaVec()(1)),
-									Gamma * (prim[i][j][k][U3] - metricFuncField(i, j, k).betaVec()(2)) };
-					auto cs_square = gam * prim[i][j][k][UU] / (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]);
-					auto cA_square = (square(i, j, k, B) * (1 - square(i, j, k, u / Gamma)) + pow(dot(i, j, k, B, u / Gamma), 2)) / (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU] + square(i, j, k, B) * (1 - square(i, j, k, u / Gamma)) + pow(dot(i, j, k, B, u / Gamma), 2));
-					auto vf_square = cA_square + cs_square - cA_square * cs_square;
-					auto sigmaf = vf_square ? (1 - vf_square) / vf_square : 0;
-					auto metricInv = metricFuncHalfField(i, j, k).m.inverse();
-					c[i][j][k] = (metricInv(0, comp) - pow(sigmaf, 2) * u0 * ui(comp)) / (metricInv(0, 0) - pow(sigmaf, 2) * u0 * u0) + sign * sqrt(abs(
-						pow((metricInv(0, comp) - pow(sigmaf, 2) * u0 * ui(comp)) / (metricInv(0, 0) - pow(sigmaf, 2) * u0 * u0), 2)
-						- (metricInv(comp, comp) - sigmaf * ui(comp) * ui(comp)) / (metricInv(0, 0) - sigmaf * u0 * u0)
-					));
-				}
-}
-
-void calFluxHHL(double cpL[N1][N2][N3], double cpR[N1][N2][N3],
-	double cnL[N1][N2][N3], double cnR[N1][N2][N3],
-	double conL[N1][N2][N3][8], double conR[N1][N2][N3][8],
-	double fluxL[N1][N2][N3][8], double fluxR[N1][N2][N3][8],
-	double fluxHLL[N1][N2][N3][8]
-) {
-#pragma omp parallel for
-	for (int i = 0; i < N1; i++)
-		for (int j = 0; j < N2; j++)
-			for (int k = 0; k < N3; k++)
-				for (int l = 0; l < 8; l++)
-				{
-					auto c_max = max(0, cpR[i][j][k], cpL[i][j][k]);
-					auto c_min = -min(0, cnR[i][j][k], cnL[i][j][k]);
-					fluxHLL[i][j][k][l] = c_max + c_min ? (c_min * fluxR[i][j][k][l] + c_max * fluxL[i][j][k][l] - c_max * c_min * (conR[i][j][k][l] - conL[i][j][k][l])) / (c_max + c_min) : 0;
-				}
-}
-
-void calFluxTVDLF(double cpL[N1][N2][N3], double cpR[N1][N2][N3],
-	double cnL[N1][N2][N3], double cnR[N1][N2][N3],
-	double conL[N1][N2][N3][8], double conR[N1][N2][N3][8],
-	double fluxL[N1][N2][N3][8], double fluxR[N1][N2][N3][8],
-	double fluxTVDLF[N1][N2][N3][8]
-) {
-#pragma omp parallel for
-	for (int i = 0; i < N1; i++)
-		for (int j = 0; j < N2; j++)
-			for (int k = 0; k < N3; k++)
-				for (int l = 0; l < 8; l++)
-				{
-					auto c_max = max(0, cpR[i][j][k], cpL[i][j][k]);
-					auto c_min = -min(0, cnR[i][j][k], cnL[i][j][k]);
-					auto c = max(c_max, c_min);
-					fluxTVDLF[i][j][k][l] = 0.5 * (fluxR[i][j][k][l] + fluxL[i][j][k][l]) - 0.5 * c * (conR[i][j][k][l] - conL[i][j][k][l]);
-				}
-}
-
-void basicCalc(double prim[N1][N2][N3][NPRIM], double con[N1][N2][N3][8], double flux[N1][N2][N3][8], double src[N1][N2][N3][8], double cp[N1][N2][N3], double cn[N1][N2][N3], Eigen::Tensor<Metric, 3>& metricFuncHalfField, short comp) {
-	prim2con(prim, con);
-	prim2flux(prim, con, flux, comp);
-	prim2src(prim, con, src);
-	prim2c(prim, cp, metricFuncHalfField, 1, comp);
-	prim2c(prim, cn, metricFuncHalfField, -1, comp);
-}
-
-void fluxCalc(double cpL[N1][N2][N3], double cpR[N1][N2][N3], double cnL[N1][N2][N3], double cnR[N1][N2][N3], double conL[N1][N2][N3][8], double conR[N1][N2][N3][8], double fluxL[N1][N2][N3][8], double fluxR[N1][N2][N3][8], double fluxHLL[N1][N2][N3][8], double fluxTVDLF[N1][N2][N3][8]) {
-	calFluxHHL(cpL, cpR, cnL, cnR, conL, conR, fluxL, fluxR, fluxHLL);
-	calFluxTVDLF(cpL, cpR, cnL, cnR, conL, conR, fluxL, fluxR, fluxTVDLF);
-}
-
-

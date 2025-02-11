@@ -6,7 +6,7 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter, MaxNLocator
 
-N1, N2, N3, NPRIM = 128, 128, 4, 10
+N1, N2, N3, NPRIM = 8, 8, 4, 10
 a = 0.9375
 R0 = 0
 h = 0
@@ -19,7 +19,7 @@ PI = 3.14159265358979323846
 X1min = 0.19325057145871735
 X1max = 7.824046010856292
 X2min = 0
-X2max = 2 * PI
+X2max = PI
 X3min = 0
 X3max = 2 * PI
 
@@ -107,7 +107,7 @@ if __name__ == "__main__":
             uu = data[:, :, :, 2:5+1]
             B = data[:, :, :, 6:8+1]
             bsq = data[:, :, :, 9]
-            rho_xz(20)
+            rho_xz(10)
     else:
         for t in range(int(sys.argv[1]) + 1, int(sys.argv[2]) + 1):
             file_path = f"./data/data{t:0>4d}.bin"
@@ -126,7 +126,7 @@ if __name__ == "__main__":
             uu = data[:, :, :, 2:5+1]
             B = data[:, :, :, 6:8+1]
             bsq = data[:, :, :, 9]
-            rho_xz(20)
+            rho_xz(10)
 
 
 
