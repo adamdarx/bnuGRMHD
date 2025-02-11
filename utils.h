@@ -7,7 +7,7 @@ MetricComponent ZERO_COMPONENT = [](double x, double y, double z) { return 0; };
 constexpr auto a = (0.9375);
 constexpr auto h = (0.);
 constexpr auto SMALL = (1.e-16);
-constexpr auto theta = 0.5;
+constexpr auto theta = 0.;
 constexpr auto NDIM = (4);
 constexpr auto N1 = (16);
 constexpr auto N2 = (16);
@@ -165,7 +165,11 @@ double contract(Eigen::Matrix3d A, Eigen::Matrix3d B) {
 void ghostify() {
 #pragma omp parallel for
 	for (int i = 0; i < N1; i++)
+	{
+#pragma omp parallel for
 		for (int j = 0; j < N2; j++)
+		{
+#pragma omp parallel for
 			for (int k = 0; k < N3; k++)
 			{
 				primGhost[NG + i][NG + j][NG + k][RHO] = prim[i][j][k][RHO];
@@ -177,10 +181,16 @@ void ghostify() {
 				primGhost[NG + i][NG + j][NG + k][B2] = prim[i][j][k][B2];
 				primGhost[NG + i][NG + j][NG + k][B3] = prim[i][j][k][B3];
 			}
+		}
+	}
 	// 1. 鬼化X1方向
 #pragma omp parallel for
 	for (int i = NG - 1; i >= 0; i--)
+	{
+#pragma omp parallel for
 		for (int j = NG; j < N2 + NG; j++)
+		{
+#pragma omp parallel for
 			for (int k = NG; k < N3 + NG; k++)
 			{
 				primGhost[i][j][k][RHO] = primGhost[i + 1][j + 1][k + 1][RHO] * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
@@ -194,10 +204,16 @@ void ghostify() {
 
 				primGhost[i][j][k][U1] = primGhost[i + 1][j + 1][k + 1][U1] * (1 + dx1);
 			}
+		}
+	}
 
 #pragma omp parallel for
 	for (int i = NG + N1; i < 2 * NG + N1; i++)
+	{
+#pragma omp parallel for
 		for (int j = NG; j < N2 + NG; j++)
+		{
+#pragma omp parallel for
 			for (int k = NG; k < N3 + NG; k++)
 			{
 				primGhost[i][j][k][RHO] = primGhost[i - 1][j - 1][k - 1][RHO] * sqrt(-metricFuncField(i - 1, j - 1, k - 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
@@ -211,37 +227,49 @@ void ghostify() {
 
 				primGhost[i][j][k][U1] = primGhost[i - 1][j - 1][k - 1][U1] * (1 + dx1);
 			}
+		}
+	}
 
 	// 2. 鬼化X2方向
 #pragma omp parallel for
 	for(int i = 0; i < N1 + 2 * NG; i++)
-		for(int j = 0; j < NG; j++)
-			for(int k = NG; k < N3 + NG; k++)
+	{
+#pragma omp parallel for
+		for (int j = 0; j < NG; j++)
+		{
+#pragma omp parallel for
+			for (int k = NG; k < N3 + NG; k++)
 			{
 				// 1) 把上面的格子移动到下面
-				primGhost[i][j][k][RHO] = primGhost[i][N2 + NG - 2 + j][k][RHO];
-				primGhost[i][j][k][UU] = primGhost[i][N2 + NG - 2 + j][k][UU];
-				primGhost[i][j][k][U1] = primGhost[i][N2 + NG - 2 + j][k][U1];
-				primGhost[i][j][k][U2] = -primGhost[i][N2 + NG - 2 + j][k][U2];
-				primGhost[i][j][k][U3] = primGhost[i][N2 + NG - 2 + j][k][U3];
-				primGhost[i][j][k][B1] = primGhost[i][N2 + NG - 2 + j][k][B1];
-				primGhost[i][j][k][B2] = -primGhost[i][N2 + NG - 2 + j][k][B2];
-				primGhost[i][j][k][B3] = primGhost[i][N2 + NG - 2 + j][k][B3];
+				primGhost[i][j][k][RHO] = primGhost[i][NG + 1 - j][(k + N3 / 2) % N3][RHO];
+				primGhost[i][j][k][UU] = primGhost[i][NG + 1 - j][(k + N3 / 2) % N3][UU];
+				primGhost[i][j][k][U1] = primGhost[i][NG + 1 - j][(k + N3 / 2) % N3][U1];
+				primGhost[i][j][k][U2] = -primGhost[i][NG + 1 - j][(k + N3 / 2) % N3][U2];
+				primGhost[i][j][k][U3] = primGhost[i][NG + 1 - j][(k + N3 / 2) % N3][U3];
+				primGhost[i][j][k][B1] = primGhost[i][NG + 1 - j][(k + N3 / 2) % N3][B1];
+				primGhost[i][j][k][B2] = -primGhost[i][NG + 1 - j][(k + N3 / 2) % N3][B2];
+				primGhost[i][j][k][B3] = primGhost[i][NG + 1 - j][(k + N3 / 2) % N3][B3];
 				// 2) 把下面的格子移动到上面
-				primGhost[i][j + N2 + NG][k][RHO] = primGhost[i][j + NG][k][RHO];
-				primGhost[i][j + N2 + NG][k][UU] = primGhost[i][j + NG][k][UU];
-				primGhost[i][j + N2 + NG][k][U1] = primGhost[i][j + NG][k][U1];
-				primGhost[i][j + N2 + NG][k][U2] = -primGhost[i][j + NG][k][U2];
-				primGhost[i][j + N2 + NG][k][U3] = primGhost[i][j + NG][k][U3];
-				primGhost[i][j + N2 + NG][k][B1] = primGhost[i][j + NG][k][B1];
-				primGhost[i][j + N2 + NG][k][B2] = -primGhost[i][j + NG][k][B2];
-				primGhost[i][j + N2 + NG][k][B3] = primGhost[i][j + NG][k][B3];
+				primGhost[i][j + N2 + NG][k][RHO] = primGhost[i][N2 + NG - 1 - j][(k + N3 / 2) % N3][RHO];
+				primGhost[i][j + N2 + NG][k][UU] = primGhost[i][N2 + NG - 1 - j][(k + N3 / 2) % N3][UU];
+				primGhost[i][j + N2 + NG][k][U1] = primGhost[i][N2 + NG - 1 - j][(k + N3 / 2) % N3][U1];
+				primGhost[i][j + N2 + NG][k][U2] = -primGhost[i][N2 + NG - 1 - j][(k + N3 / 2) % N3][U2];
+				primGhost[i][j + N2 + NG][k][U3] = primGhost[i][N2 + NG - 1 - j][(k + N3 / 2) % N3][U3];
+				primGhost[i][j + N2 + NG][k][B1] = primGhost[i][N2 + NG - 1 - j][(k + N3 / 2) % N3][B1];
+				primGhost[i][j + N2 + NG][k][B2] = -primGhost[i][N2 + NG - 1 - j][(k + N3 / 2) % N3][B2];
+				primGhost[i][j + N2 + NG][k][B3] = primGhost[i][N2 + NG - 1 - j][(k + N3 / 2) % N3][B3];
 			}
+		}
+	}
 
 	// 3. 鬼化X3方向
 #pragma omp parallel for
 	for (int i = 0; i < N1 + 2 * NG; i++)
+	{
+#pragma omp parallel for
 		for (int j = 0; j < N2 + 2 * NG; j++)
+		{
+#pragma omp parallel for
 			for (int k = 0; k < NG; k++)
 			{
 				// 1) 把上面的格子移动到下面
@@ -263,13 +291,19 @@ void ghostify() {
 				primGhost[i][j][k][B2] = -primGhost[i][j][k + N3 + NG][B2];
 				primGhost[i][j][k][B3] = primGhost[i][j][k + N3 + NG][B3];
 			}
+		}
+	}
 
 }
 
 void interpolate() {
 #pragma omp parallel for
 	for (int i = 0; i < N1 + 1; i++)
+	{
+#pragma omp parallel for
 		for (int j = 0; j < N2 + 1; j++)
+		{
+#pragma omp parallel for
 			for (int k = 0; k < N3 + 1; k++)
 				for (int index = 0; index < NPRIM; index++)
 				{
@@ -294,15 +328,25 @@ void interpolate() {
 						2 * (primGhost[i + NG][j + NG][k + NG][index] - primGhost[i + NG][j + NG][k + NG - 1][index]) / (dx3),
 						2 * (primGhost[i + NG][j + NG][k + NG - 1][index] - primGhost[i + NG][j + NG][k][index]) / (dx3)) * dx3 / 2;
 				}
+		}
+	}
 }
 
 void primLR2conLR() {
 #pragma omp parallel for
 	for (int i = 0; i < N1; i++)
+	{
+#pragma omp parallel for
 		for (int j = 0; j < N2; j++)
+		{
+#pragma omp parallel for
 			for (int k = 0; k < N3; k++)
-				for(int LR = 0; LR < 2; LR++)
-					for(int comp = 0; comp < 3; comp++)
+			{
+#pragma omp parallel for
+				for (int LR = 0; LR < 2; LR++)
+				{
+#pragma omp parallel for
+					for (int comp = 0; comp < 3; comp++)
 					{
 						Eigen::Vector3d u{ primLR[LR][comp][i][j][k][U1] ,primLR[LR][comp][i][j][k][U2] ,primLR[LR][comp][i][j][k][U3] };
 						Eigen::Vector3d B{ primLR[LR][comp][i][j][k][B1] ,primLR[LR][comp][i][j][k][B2] ,primLR[LR][comp][i][j][k][B3] };
@@ -320,14 +364,26 @@ void primLR2conLR() {
 						conLR[LR][comp][i][j][k][6] = primLR[LR][comp][i][j][k][B2];
 						conLR[LR][comp][i][j][k][7] = primLR[LR][comp][i][j][k][B3];
 					}
+				}
+			}
+		}
+	}
 }
 
 void primLR2srcLR() {
 #pragma omp parallel for
 	for (int i = 0; i < N1; i++)
+	{
+#pragma omp parallel for
 		for (int j = 0; j < N2; j++)
+		{
+#pragma omp parallel for
 			for (int k = 0; k < N3; k++)
+			{
+#pragma omp parallel for
 				for (int LR = 0; LR < 2; LR++)
+				{
+#pragma omp parallel for
 					for (int comp = 0; comp < 3; comp++)
 					{
 						Eigen::Vector3d u{ primLR[LR][comp][i][j][k][U1] ,primLR[LR][comp][i][j][k][U2] ,primLR[LR][comp][i][j][k][U3] };
@@ -358,6 +414,10 @@ void primLR2srcLR() {
 						srcLR[LR][comp][i][j][k][6] = 0;
 						srcLR[LR][comp][i][j][k][7] = 0;
 					}
+				}
+			}
+		}
+	}
 }
 
 void primLR2fluxLR() {
