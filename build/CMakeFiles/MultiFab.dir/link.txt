@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,-Bsymbolic-functions CMakeFiles/MultiFab.dir/main.cpp.o -o MultiFab  -Wl,-rpath,/usr/lib/x86_64-linux-gnu/mpich/lib _deps/amrex_code-build/Src/libamrex_3d.a /usr/lib/x86_64-linux-gnu/mpich/lib/libmpichcxx.so /usr/lib/x86_64-linux-gnu/mpich/lib/libmpich.so 

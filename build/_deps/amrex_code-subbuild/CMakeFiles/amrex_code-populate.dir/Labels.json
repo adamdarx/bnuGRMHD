@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/CMakeFiles/amrex_code-populate"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/CMakeFiles/amrex_code-populate.rule"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/CMakeFiles/amrex_code-populate-complete.rule"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/amrex_code-populate-prefix/src/amrex_code-populate-stamp/amrex_code-populate-build.rule"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/amrex_code-populate-prefix/src/amrex_code-populate-stamp/amrex_code-populate-configure.rule"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/amrex_code-populate-prefix/src/amrex_code-populate-stamp/amrex_code-populate-download.rule"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/amrex_code-populate-prefix/src/amrex_code-populate-stamp/amrex_code-populate-install.rule"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/amrex_code-populate-prefix/src/amrex_code-populate-stamp/amrex_code-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/amrex_code-populate-prefix/src/amrex_code-populate-stamp/amrex_code-populate-patch.rule"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/amrex_code-populate-prefix/src/amrex_code-populate-stamp/amrex_code-populate-test.rule"
+		},
+		{
+			"file" : "/home/adamdarx/bnuGRMHD/build/_deps/amrex_code-subbuild/amrex_code-populate-prefix/src/amrex_code-populate-stamp/amrex_code-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"amrex_code-populate"
+		],
+		"name" : "amrex_code-populate"
+	}
+}
