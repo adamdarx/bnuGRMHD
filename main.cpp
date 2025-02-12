@@ -2,9 +2,11 @@
 bnuGRMHD ©️ 2025
 Date: 2024/02/02
 */
-#include <cmath>
 #include <ctime>
 #include <fstream>
+#include <AMReX.H>
+#include <AMReX_Print.H>
+#include <AMReX_PlotFileUtil.H> //For ploting the MultiFab
 #include "Metric.h"
 #include "utils.h"
 #include "init.h"
@@ -12,81 +14,148 @@ Date: 2024/02/02
 
 int main(int argc, char* argv[])
 {
+	amrex::Initialize(argc,argv);
+	// amrex relevant settings
+	// settings for normal meshgrid
+	amrex::IntVect dom_lo(0, 0, 0);
+	amrex::IntVect dom_hi(N1 - 1, N2 - 1, N3 - 1);
+	amrex::Box domain(dom_lo, dom_hi);
+	amrex::BoxArray ba(domain);
+	ba.maxSize(max_grid_size);
+	amrex::DistributionMapping dm(ba);
+	amrex::RealBox real_box ({X1_min, X2_min, X3_min}, {X1_max, X2_max, X3_max});
+    amrex::Geometry geom(domain, &real_box);
+	amrex::GpuArray<amrex::Real,3> dx = geom.CellSizeArray();
+	// settings for ghost meshgrid
+	amrex::IntVect dom_loGhost(0, 0, 0);
+	amrex::IntVect dom_hiGhost(N1 + 2 * NG - 1, N2 + 2 * NG - 1, N3 + 2 * NG - 1);
+	amrex::Box domainGhost(dom_loGhost, dom_hiGhost);
+	amrex::BoxArray baGhost(domainGhost);
+	baGhost.maxSize(max_grid_size);
+	amrex::DistributionMapping dmGhost(baGhost);
+	amrex::RealBox real_boxGhost ({X1_min - NG * dx[0], X2_min - NG * dx[1], X3_min - NG * dx[2]}, {X1_max + NG * dx[0], X2_max + NG * dx[0], X3_max + NG * dx[0]});
+    amrex::Geometry geomGhost(domainGhost, &real_boxGhost);
+	// settings for half meshgrid
+	amrex::IntVect dom_loHalf(0, 0, 0);
+	amrex::IntVect dom_hiHalf(N1 + 1 - 1, N2 + 1 - 1, N3 + 1 - 1);
+	amrex::Box domainHalf(dom_loHalf, dom_hiHalf);
+	amrex::BoxArray baHalf(domainHalf);
+	baHalf.maxSize(max_grid_size);
+	amrex::DistributionMapping dmHalf(baHalf);
+	amrex::RealBox real_boxHalf ({X1_min - 0.5 * dx[0], X2_min - 0.5 * dx[1], X3_min - 0.5 * dx[2]}, {X1_max + 0.5 * dx[0], X2_max + 0.5 * dx[1], X3_max + 0.5 * dx[2]});
+    amrex::Geometry geomHalf(domainHalf, &real_boxHalf);
+
+	alphaDiffField.define(ba, dm, 4, 0);
+	for(int dim = 0; dim < 3; dim++)
+		alphaDiffHalfField[dim].define(baHalf, dmHalf, 4, 0);
+	prim.define(ba, dm, NPRIM, 0);
+	con.define(ba, dm, 8, 0);
+	src.define(ba, dm, 8, 0);
+	ksi.define(ba, dm, 1, 0);
+	primGhost.define(baGhost, dmGhost, NPRIM, 2);
+	for(int LR = 0; LR < 2; LR++)
+		for(int comp = 0; comp < 3; comp++)
+		{
+			primLR.define(baHalf, dmHalf, NPRIM, 1);
+			conLR.define(baHalf, dmHalf, 8, 1);
+			srcLR.define(baHalf, dmHalf, 8, 1);
+			fluxLR.define(baHalf, dmHalf, 8, 1);
+		}
+	for(int dim = 0; dim < 3; dim++)
+	{
+		fluxHLL[dim].define(baHalf, dmHalf, 8, 0);
+		fluxTVDLF[dim].define(baHalf, dmHalf, 8, 0);
+		fluxLLF[dim].define(baHalf, dmHalf, 8, 1);
+		fluxSmoothLLF[dim].define(baHalf, dmHalf, 8, 1);
+	}
+	for(int PN = 0; PN < 2; PN++)
+		for(int LR = 0; LR < 2; LR++)
+			for(int comp = 0; comp < 3; comp++)
+				c.define(baHalf, dmHalf, 1, 0);
+
 	std::ofstream ofs;
 	ofs.open("grmhd.log", std::ios::out);
 	auto totalTime = 0.;
 	auto totalPhysicalTime = 0.;
+	init_metric();
+	for (int i = 0; i < N1 + 2 * NG; i++)
+		for (int j = 0; j < N2 + 2 * NG; j++)
+			for (int k = 0; k < N3 + 2 * NG; k++)
+				for (int row = 0; row < 4; row++)
+					for (int col = 0; col < 4; col++)
+						metricFuncField(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
 
+	for (int i = 0; i < N1 + 1; i++)
+		for (int j = 0; j < N2 + 1; j++)
+			for (int k = 0; k < N3 + 1; k++)
+				for (int row = 0; row < 4; row++)
+					for (int col = 0; col < 4; col++)
+					{
+						metricFuncHalfField[0](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i - 1) * dx1 / 2, X2min + (j + NG) * dx2, X3min + (k + NG) * dx3);
+						metricFuncHalfField[1](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + NG) * dx1, X2min + (2 * i - 1) * dx2 / 2, X3min + (k + NG) * dx3);
+						metricFuncHalfField[2](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + NG) * dx1, X2min + (j + NG) * dx2, X3min + (2 * k - 1) * dx3 / 2);
+					}
+
+	// 利用中心差分计算alpha的导数
+	for (MFIter mfi(alphaDiffField[comp],TilingIfNotGPU()); mfi.isValid(); ++mfi)
 	{
-		init_metric();
-		for (int i = 0; i < N1 + 2 * NG; i++)
-			for (int j = 0; j < N2 + 2 * NG; j++)
-				for (int k = 0; k < N3 + 2 * NG; k++)
+		const Box& bx = mfi.tilebox();
+		Array4<Real> const& a = alphaDiffField[comp][mfi].array();
+		ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+		{
+			a(i, j, k, 0) = 0;
+			a(i, j, k, 1) = (metricFuncField(i + NG + 1, j + NG, k + NG).alpha() - metricFuncField(i + NG - 1, j + NG, k + NG).alpha()) / (2 * dx1);
+			a(i, j, k, 2) = (metricFuncField(i + NG, j + NG + 1, k + NG).alpha() - metricFuncField(i + NG, j + NG - 1, k + NG).alpha()) / (2 * dx2);
+			a(i, j, k, 3) = (metricFuncField(i + NG, j + NG, k + NG + 1).alpha() - metricFuncField(i + NG, j + NG, k + NG - 1).alpha()) / (2 * dx3);
+		}
+	}
+
+	for (int comp = 0; comp < 3; comp++)
+		for (MFIter mfi(alphaDiffHalfField[comp],TilingIfNotGPU()); mfi.isValid(); ++mfi)
+		{
+			const Box& bx = mfi.tilebox();
+			Array4<Real> const& a = alphaDiffHalfField[comp][mfi].array();
+			ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+			{
+				a(i, j, k, 0) = 0;
+				a(i, j, k, 1) = (metricFuncField(i + 1, j, k).alpha() - metricFuncField(i, j, k).alpha()) / (dx1);
+				a(i, j, k, 2) = (metricFuncField(i, j + 1, k).alpha() - metricFuncField(i, j, k).alpha()) / (dx2);
+				a(i, j, k, 3) = (metricFuncField(i, j, k + 1).alpha() - metricFuncField(i, j, k).alpha()) / (dx3);
+			}
+		}
+
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for(int l = 0; l < 4; l++)
 					for (int row = 0; row < 4; row++)
 						for (int col = 0; col < 4; col++)
-							metricFuncField(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
+							metricDiffField(i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
 
-		for (int i = 0; i < N1 + 1; i++)
-			for (int j = 0; j < N2 + 1; j++)
-				for (int k = 0; k < N3 + 1; k++)
+	for (int i = 0; i < N1; i++)
+		for (int j = 0; j < N2; j++)
+			for (int k = 0; k < N3; k++)
+				for (int l = 0; l < 4; l++)
 					for (int row = 0; row < 4; row++)
 						for (int col = 0; col < 4; col++)
 						{
-							metricFuncHalfField[0](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i - 1) * dx1 / 2, X2min + (j + NG) * dx2, X3min + (k + NG) * dx3);
-							metricFuncHalfField[1](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + NG) * dx1, X2min + (2 * i - 1) * dx2 / 2, X3min + (k + NG) * dx3);
-							metricFuncHalfField[2](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + NG) * dx1, X2min + (j + NG) * dx2, X3min + (2 * k - 1) * dx3 / 2);
+							metricDiffHalfField[0](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (2 * i - 1) * dx1 / 2, X2min + (j + NG) * dx2, X3min + (k + NG) * dx3);
+							metricDiffHalfField[1](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i + NG) * dx1, X2min + (2 * i - 1) * dx2 / 2, X3min + (k + NG) * dx3);
+							metricDiffHalfField[2](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i + NG) * dx1, X2min + (j + NG) * dx2, X3min + (2 * k - 1) * dx3 / 2);
 						}
-
-		// 利用中心差分计算alpha的导数
-		for (int i = 0; i < N1; i++)
-			for (int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
-					{
-						alphaDiffField[i][j][k][0] = 0;
-						alphaDiffField[i][j][k][1] = (metricFuncField(i + NG + 1, j + NG, k + NG).alpha() - metricFuncField(i + NG - 1, j + NG, k + NG).alpha()) / (2 * dx1);
-						alphaDiffField[i][j][k][2] = (metricFuncField(i + NG, j + NG + 1, k + NG).alpha() - metricFuncField(i + NG, j + NG - 1, k + NG).alpha()) / (2 * dx2);
-						alphaDiffField[i][j][k][3] = (metricFuncField(i + NG, j + NG, k + NG + 1).alpha() - metricFuncField(i + NG, j + NG, k + NG - 1).alpha()) / (2 * dx3);
-					}
-
-		for (int i = 0; i < N1 + 1; i++)
-			for (int j = 0; j < N2 + 1; j++)
-				for (int k = 0; k < N3 + 1; k++)
-					for (int comp = 0; comp < 3; comp++)
-					{
-						alphaDiffHalfField[comp][i][j][k][0] = 0;
-						alphaDiffHalfField[comp][i][j][k][1] = (metricFuncField(i + 1, j, k).alpha() - metricFuncField(i, j, k).alpha()) / (dx1);
-						alphaDiffHalfField[comp][i][j][k][2] = (metricFuncField(i, j + 1, k).alpha() - metricFuncField(i, j, k).alpha()) / (dx2);
-						alphaDiffHalfField[comp][i][j][k][3] = (metricFuncField(i, j, k + 1).alpha() - metricFuncField(i, j, k).alpha()) / (dx3);
-					}
-
-		for (int i = 0; i < N1; i++)
-			for (int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
-					for(int l = 0; l < 4; l++)
-						for (int row = 0; row < 4; row++)
-							for (int col = 0; col < 4; col++)
-								metricDiffField(i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
-
-		for (int i = 0; i < N1; i++)
-			for (int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
-					for (int l = 0; l < 4; l++)
-						for (int row = 0; row < 4; row++)
-							for (int col = 0; col < 4; col++)
-							{
-								metricDiffHalfField[0](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (2 * i - 1) * dx1 / 2, X2min + (j + NG) * dx2, X3min + (k + NG) * dx3);
-								metricDiffHalfField[1](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i + NG) * dx1, X2min + (2 * i - 1) * dx2 / 2, X3min + (k + NG) * dx3);
-								metricDiffHalfField[2](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i + NG) * dx1, X2min + (j + NG) * dx2, X3min + (2 * k - 1) * dx3 / 2);
-							}
-		init();
-		char filename[13];
-		sprintf(filename, "./data/data%0.4d.bin", 0);
-		write_bin(fopen(filename, "wb"));
-		for (int i = 0; i < N1; i++)
-			for (int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
-					ksi[i][j][k] = (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU]) * (1 + pow(prim[i][j][k][U1], 2) + pow(prim[i][j][k][U2], 2) + pow(prim[i][j][k][U3], 2));
-
+	init();
+	char filename[32];
+	sprintf(filename, "./data/data%.4d.bin", 0);
+	write_bin(fopen(filename, "wb"));
+	for (MFIter mfi(ksi,TilingIfNotGPU()); mfi.isValid(); ++mfi)
+	{
+		const Box& bx = mfi.tilebox();
+		Array4<Real> const& a = ksi[mfi].array();
+		Array4<Real const> const& b = prim[mfi].array();
+		ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+		{
+			a(i, j, k) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * (1 + pow(b(i, j, k, U1), 2) + pow(b(i, j, k, U2), 2) + pow(b(i, j, k, U3), 2));
+		});
 	}
 
 	for(int epoch = 1; epoch <= epochNum; epoch++)
@@ -111,19 +180,26 @@ int main(int argc, char* argv[])
 
 		calFluxTVDLF();
 		
-#pragma omp parallel for
-		for (int i = 0; i < N1; i++)
-			for (int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
-					for(int l = 0; l < 8; l++)
-						for(int comp = 0; comp < 3; comp++)
-							fluxLLF[comp][i][j][k][l] = theta * fluxHLL[comp][i][j][k][l] + (1 - theta) * fluxTVDLF[comp][i][j][k][l];
+		for(int comp = 0; comp < 3; comp++)
+		{
+			for (MFIter mfi(fluxLLF[comp],TilingIfNotGPU()); mfi.isValid(); ++mfi)
+			{
+				const Box& bx = mfi.tilebox();
+				Array4<Real> const& a = fluxLLF[comp][mfi].array();
+				Array4<Real const> const& b = fluxHHL[comp][mfi].const_array();
+				Array4<Real const> const& c = fluxTVDLF[comp][mfi].const_array();
+				ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k, int l)
+				{
+					a(i,j,k,l) = theta * b(i,j,k,l) + (1 - theta) * c(i,j,k,l);
+				});
+			}
+		}
 
 		prim2con();
 
 		prim2src();
 
-#pragma omp parallel for
+
 		for (int i = 0; i < N1; i++)
 			for (int j = 0; j < N2; j++)
 				for (int k = 0; k < N3; k++)
@@ -140,7 +216,7 @@ int main(int argc, char* argv[])
 					Delta_t = min(cour * min(dx1 / (2 * c1), dx2 / (2 * c2), dx3 / (2 * c3)), Delta_t);
 				}
 
-#pragma omp parallel for
+
 		for (int i = 1; i < N1 - 1; i++)
 			for (int j = 1; j < N2 - 1; j++)
 				for (int k = 1; k < N3 - 1; k++)
@@ -169,7 +245,7 @@ int main(int argc, char* argv[])
 
 		calFluxTVDLF();
 
-#pragma omp parallel for
+
 		for (int i = 1; i < N1 - 1; i++)
 			for (int j = 1; j < N2 - 1; j++)
 				for (int k = 1; k < N3 - 1; k++)
@@ -182,7 +258,7 @@ int main(int argc, char* argv[])
 					fluxSmoothLLF[2][i][j][k][6] = 0.125 * (2 * fluxLLF[2][i][j][k][6] + fluxLLF[2][i][j + 1][k][6] + fluxLLF[2][i][j - 1][k][6] - fluxLLF[1][i][j][k][7] - fluxLLF[1][i][j + 1][k][7] - fluxLLF[1][i][j][k - 1][7] - fluxLLF[1][i][j + 1][k - 1][7]);
 				}
 
-#pragma omp parallel for
+
 		for (int i = 1; i < N1 - 1; i++)
 			for (int j = 1; j < N2 - 1; j++)
 				for (int k = 1; k < N3 - 1; k++)
@@ -199,8 +275,8 @@ int main(int argc, char* argv[])
 		totalTime += clock() - start;
 		totalPhysicalTime += Delta_t;
 		std::cout << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		char filename[13];
-		sprintf(filename, "./data/data%0.4d.bin", epoch);
+		char filename[32];
+		sprintf(filename, "./data/data%.4d.bin", epoch);
 		write_bin(fopen(filename, "wb"));
 		ofs << "--------Epoch--------" << epoch << std::endl;
 		for(int i = 0; i < N1; i++)
@@ -214,5 +290,6 @@ int main(int argc, char* argv[])
 		ofs << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
 	}
 	ofs << "Total times(ms): " << totalTime << std::endl << "Average time(ms): " << totalTime / epochNum << std::endl;
+	amrex::Finalize();
 	return 0;
 }

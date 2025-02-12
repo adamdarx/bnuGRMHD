@@ -5,7 +5,33 @@ project(GRMHD
         LANGUAGES C CXX)
 
 add_executable(GRMHD main.cpp Metric.cpp)
-include_directories(~/eigen)			# 导入Eigen库，默认在主文件夹下
+
+if(NOT DEFINED EIGEN_ROOT)
+  message("-- Download and configure Eigen from GitHub")
+
+  #Download Eigen from GitHub
+  include(FetchContent)
+  set(FETCHCONTENT_QUIET OFF)
+
+  FetchContent_Declare(
+    eigen_code
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git/
+    GIT_TAG        origin/master
+    )
+
+  FetchContent_Populate(eigen_code)
+
+  # CMake will read the files in these directories and configure, build
+  # and install Eigen.
+  include_directories(${eigen_code_SOURCE_DIR})
+
+else()
+
+  # Add Eigen
+  message("-- Searching for Eigen install directory at ${AMReX_ROOT}")
+  include_directories(${EIGEN_ROOT})
+
+endif()
 
 
 # To use a pre-installed AMReX build, run:

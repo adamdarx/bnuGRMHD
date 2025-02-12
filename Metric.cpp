@@ -1,3 +1,4 @@
+#include <cassert>
 #include "Metric.h"
 
 Metric::Metric()
