@@ -7,8 +7,6 @@
 #include <time.h>
 #include "utils.h"
 
-#define CLOCKS_PER_SEC ((clock_t)1000)
-
 //given a Jacobian matrix, transform a vector from coord1 to coord2
 void vect_trans(double vect1[NDIM], double J[NDIM][NDIM]) {
     double vect2[NDIM];
@@ -33,18 +31,18 @@ double ut_cal(double g[NDIM][NDIM], double u1, double u2, double u3) {
 }
 
 //convert 4-velocity u^i from bl coord to mks coord
-void convert_ui(int i, int j, int k) {
+void convert_ui(int i, int j, int k, amrex::Array4<amrex::Real> const& primArray) {
     double uu[NDIM];
-    uu[1] = prim[i][j][k][U1];
-    uu[2] = prim[i][j][k][U2];
-    uu[3] = prim[i][j][k][U3];
+    uu[1] = primArray(i, j, k, U1);
+    uu[2] = primArray(i, j, k, U2);
+    uu[3] = primArray(i, j, k, U3);
     uu[0] = ut_cal(gdd_bl[i][j][k], uu[1], uu[2], uu[3]);
     vect_trans(uu, J_bl2ks[i][j][k]);
     vect_trans(uu, J_ks2mks[i][j][k]);
-    prim[i][j][k][U0] = uu[0];
-    prim[i][j][k][U1] = uu[1];
-    prim[i][j][k][U2] = uu[2];
-    prim[i][j][k][U3] = uu[3];
+    primArray(i, j, k, U0) = uu[0];
+    primArray(i, j, k, U1) = uu[1];
+    primArray(i, j, k, U2) = uu[2];
+    primArray(i, j, k, U3) = uu[3];
 }
 
 //caculate the constant l
@@ -61,16 +59,16 @@ double lfish_calc(double r)
 }
 
 //compute bsq
-double bsq_cal(int i, int j, int k) {
+double bsq_cal(int i, int j, int k, amrex::Array4<amrex::Real> const& primArray) {
     double b[NDIM], bsq;  // b^mu and bsq
     b[0] = 0.;
     for (int m = 1; m < 4; m++) {
         for (int n = 0; n < 4; n++) {
-            b[0] += gdd_mks[i][j][k][m][n] * prim[i][j][k][B1 + m - 1] * prim[i][j][k][U0 + n - 1];
+            b[0] += gdd_mks[i][j][k][m][n] * primArray(i, j, k, B1 + m - 1) * primArray(i, j, k, U0 + n - 1);
         }
     }
     for (int m = 1; m < 4; m++) {
-        b[m] = (prim[i][j][k][B1 + m - 1] + b[0] * prim[i][j][k][U1 + m - 1]) / (SMALL + prim[i][j][k][U0]);
+        b[m] = (primArray(i, j, k, B1 + m - 1) + b[0] * primArray(i, j, k, U1 + m - 1)) / (SMALL + primArray(i, j, k, U0));
     }
     bsq = 0.;
     for (int m = 0; m < 4; m++) {
@@ -86,18 +84,23 @@ double bsq_cal(int i, int j, int k) {
 double compute_B_from_A(double A[N1 + 1][N2 + 1][N3 + 1]) {
     double bsq_max = 0.;
     double bsq, r;
-    for (int i = 1; i < N1; i++) {
-        for (int j = 1; j < N2; j++) {
-            for (int k = 0; k < N3; k++) {
-                prim[i][j][k][B1] = (A[i - 1][j][k] - A[i - 1][j - 1][k] +
-                    A[i][j][k] - A[i][j - 1][k]) / (2. * dx2 * gdet_mks[i][j][k]);
-                prim[i][j][k][B2] = -(A[i][j - 1][k] - A[i - 1][j - 1][k] +
-                    A[i][j][k] - A[i - 1][j][k]) / (2. * dx1 * gdet_mks[i][j][k]);
-                prim[i][j][k][B3] = 0.;
-                r = BL_coord1[i][j][k];
-                if (r >= rin) {
-                    bsq = bsq_cal(i, j, k);
-                    if (bsq > bsq_max) bsq_max = bsq;
+    for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
+	{
+		const amrex::Box& bx = mfi.tilebox();
+		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
+        for (int i = 1; i < N1; i++) {
+            for (int j = 1; j < N2; j++) {
+                for (int k = 0; k < N3; k++) {
+                    primArray(i, j, k, B1) = (A[i - 1][j][k] - A[i - 1][j - 1][k] +
+                        A[i][j][k] - A[i][j - 1][k]) / (2. * dx2 * gdet_mks[i][j][k]);
+                    primArray(i, j, k, B2) = -(A[i][j - 1][k] - A[i - 1][j - 1][k] +
+                        A[i][j][k] - A[i - 1][j][k]) / (2. * dx1 * gdet_mks[i][j][k]);
+                    primArray(i, j, k, B3) = 0.;
+                    r = BL_coord1[i][j][k];
+                    if (r >= rin) {
+                        bsq = bsq_cal(i, j, k, primArray);
+                        if (bsq > bsq_max) bsq_max = bsq;
+                    }
                 }
             }
         }
@@ -107,42 +110,27 @@ double compute_B_from_A(double A[N1 + 1][N2 + 1][N3 + 1]) {
 
 //fix primitive variable by adding density rho
 void fix() {
-    double r, rho_floor, ug_floor, bsq, sigma;
-    for (int i = 0; i < N1; i++) {
-        for (int j = 0; j < N2; j++) {
-            for (int k = 0; k < N3; k++) {
-                r = BL_coord1[i][j][k];
-                rho_floor = RHOMIN * pow(r, -3. / 2.);
-                ug_floor = UUMIN * pow(r, -3. / 2. * gam);
-                if (prim[i][j][k][RHO] < rho_floor) prim[i][j][k][RHO] = rho_floor;
-                if (prim[i][j][k][UU] < ug_floor) prim[i][j][k][UU] = ug_floor;
-                bsq = bsq_cal(i, j, k);
-                sigma = bsq / prim[i][j][k][RHO];
-                if (sigma > SIGMAMAX) prim[i][j][k][RHO] = bsq / SIGMAMAX;
-            }
-        }
+    for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
+	{
+		const amrex::Box& bx = mfi.tilebox();
+		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+		{
+            double r, rho_floor, ug_floor, bsq, sigma;
+            r = BL_coord1[i][j][k];
+            rho_floor = RHOMIN * pow(r, -3. / 2.);
+            ug_floor = UUMIN * pow(r, -3. / 2. * gam);
+            if (primArray(i, j, k, RHO) < rho_floor) primArray(i, j, k, RHO) = rho_floor;
+            if (primArray(i, j, k, UU) < ug_floor) primArray(i, j, k, UU) = ug_floor;
+            bsq = bsq_cal(i, j, k, primArray);
+            sigma = bsq / primArray(i, j, k, RHO);
+            if (sigma > SIGMAMAX) primArray(i, j, k, RHO) = bsq / SIGMAMAX;
+        });
     }
 }
 
-//write bin
-int write_bin(FILE* fp) {
-    size_t total_elements = N1 * N2 * N3 * NPRIM;
-    if (fwrite(&prim, sizeof(double), total_elements, fp) != total_elements) {
-        return -1;
-    }
-    return 0;
-}
-
-//read bin
-int read_bin(double prim[N1][N2][N3][NPRIM], FILE* fp) {
-    size_t total_elements = N1 * N2 * N3 * NPRIM;
-    if (fread(&prim, sizeof(double), total_elements, fp) != total_elements) {
-        return -1;
-    }
-    return 0;
-}
-
-void init() {
+void init()
+{
     //intermediate quantity
     double r, theta, phi, r2, sinth, sinth2, costh, costh2, sigma, delta, AA;
     double a2 = a * a;
@@ -162,340 +150,351 @@ void init() {
     double tfac = 1;
     double rfac, hfac;
     double pfac = 1;
-    for (int i = 0; i < N1; i++) {
-        for (int j = 0; j < N2; j++) {
-            for (int k = 0; k < N3; k++) {
-                /**************************************************************************************************
-                (1) get the BL, KS and MKS coords at the grid points
-                ***************************************************************************************************/
+    for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
+	{
+		const amrex::Box& bx = mfi.tilebox();
+		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
+        for (int i = 0; i < N1; i++) {
+            for (int j = 0; j < N2; j++) {
+                for (int k = 0; k < N3; k++) {
+                    /**************************************************************************************************
+                    (1) get the BL, KS and MKS coords at the grid points
+                    ***************************************************************************************************/
 
-                //MKS grid
-                Xgrid1[i][j][k] = X1min + i * dx1;
-                Xgrid2[i][j][k] = X2min + j * dx2;
-                Xgrid3[i][j][k] = X3min + k * dx3;
-                //KS grid
-                KS_coord1[i][j][k] = exp(Xgrid1[i][j][k]) + R0;
-                KS_coord2[i][j][k] = Xgrid2[i][j][k] + h / 2. * sin(2. * Xgrid2[i][j][k]);
-                KS_coord3[i][j][k] = Xgrid3[i][j][k];
-                //BL grid
-                BL_coord1[i][j][k] = KS_coord1[i][j][k];
-                BL_coord2[i][j][k] = KS_coord2[i][j][k];
-                //to save computing power, we caculate these quantity at once
-                r = BL_coord1[i][j][k];
-                theta = BL_coord2[i][j][k];
-                r2 = r * r;
-                sinth = sin(theta);
-                costh = cos(theta);
-                sinth2 = sinth * sinth;
-                costh2 = costh * costh;
-                sigma = r2 + a2 * costh2;
-                delta = r2 - 2. * r + a2;
-                AA = (r2 + a2) * (r2 + a2) - delta * a2 * sinth2;
-                rfac = r;
-                hfac = 1. + h * cos(2. * Xgrid2[i][j][k]);
+                    //MKS grid
+                    Xgrid1[i][j][k] = X1min + i * dx1;
+                    Xgrid2[i][j][k] = X2min + j * dx2;
+                    Xgrid3[i][j][k] = X3min + k * dx3;
+                    //KS grid
+                    KS_coord1[i][j][k] = exp(Xgrid1[i][j][k]) + R0;
+                    KS_coord2[i][j][k] = Xgrid2[i][j][k] + h / 2. * sin(2. * Xgrid2[i][j][k]);
+                    KS_coord3[i][j][k] = Xgrid3[i][j][k];
+                    //BL grid
+                    BL_coord1[i][j][k] = KS_coord1[i][j][k];
+                    BL_coord2[i][j][k] = KS_coord2[i][j][k];
+                    //to save computing power, we caculate these quantity at once
+                    r = BL_coord1[i][j][k];
+                    theta = BL_coord2[i][j][k];
+                    r2 = r * r;
+                    sinth = sin(theta);
+                    costh = cos(theta);
+                    sinth2 = sinth * sinth;
+                    costh2 = costh * costh;
+                    sigma = r2 + a2 * costh2;
+                    delta = r2 - 2. * r + a2;
+                    AA = (r2 + a2) * (r2 + a2) - delta * a2 * sinth2;
+                    rfac = r;
+                    hfac = 1. + h * cos(2. * Xgrid2[i][j][k]);
 
-                BL_coord3[i][j][k] = KS_coord3[i][j][k] - a * KS_coord1[i][j][k] / delta;
-                BL_coord3[i][j][k] = fmod(BL_coord3[i][j][k], 2. * PI);
-                if (BL_coord3[i][j][k] < 0) {
-                    BL_coord3[i][j][k] += 2. * PI;
-                }
-                phi = BL_coord3[i][j][k];
-                /**************************************************************************************************
-                (2) get BL, KS and MKS metric at the grid points
-                ***************************************************************************************************/
+                    BL_coord3[i][j][k] = KS_coord3[i][j][k] - a * KS_coord1[i][j][k] / delta;
+                    BL_coord3[i][j][k] = fmod(BL_coord3[i][j][k], 2. * PI);
+                    if (BL_coord3[i][j][k] < 0) {
+                        BL_coord3[i][j][k] += 2. * PI;
+                    }
+                    phi = BL_coord3[i][j][k];
+                    /**************************************************************************************************
+                    (2) get BL, KS and MKS metric at the grid points
+                    ***************************************************************************************************/
 
-                //bl metric
-                gdd_bl[i][j][k][0][0] = -1. + 2. * r / sigma;
-                gdd_bl[i][j][k][0][1] = 0.;
-                gdd_bl[i][j][k][0][2] = 0.;
-                gdd_bl[i][j][k][0][3] = -2. * r * a * sinth2 / sigma;
+                    //bl metric
+                    gdd_bl[i][j][k][0][0] = -1. + 2. * r / sigma;
+                    gdd_bl[i][j][k][0][1] = 0.;
+                    gdd_bl[i][j][k][0][2] = 0.;
+                    gdd_bl[i][j][k][0][3] = -2. * r * a * sinth2 / sigma;
 
-                gdd_bl[i][j][k][1][0] = gdd_bl[i][j][k][0][1];
-                gdd_bl[i][j][k][1][1] = sigma / delta;
-                gdd_bl[i][j][k][1][2] = 0.;
-                gdd_bl[i][j][k][1][3] = 0.;
+                    gdd_bl[i][j][k][1][0] = gdd_bl[i][j][k][0][1];
+                    gdd_bl[i][j][k][1][1] = sigma / delta;
+                    gdd_bl[i][j][k][1][2] = 0.;
+                    gdd_bl[i][j][k][1][3] = 0.;
 
-                gdd_bl[i][j][k][2][0] = gdd_bl[i][j][k][0][2];
-                gdd_bl[i][j][k][2][1] = gdd_bl[i][j][k][1][2];
-                gdd_bl[i][j][k][2][2] = sigma;
-                gdd_bl[i][j][k][2][3] = 0.;
+                    gdd_bl[i][j][k][2][0] = gdd_bl[i][j][k][0][2];
+                    gdd_bl[i][j][k][2][1] = gdd_bl[i][j][k][1][2];
+                    gdd_bl[i][j][k][2][2] = sigma;
+                    gdd_bl[i][j][k][2][3] = 0.;
 
-                gdd_bl[i][j][k][3][0] = gdd_bl[i][j][k][0][3];
-                gdd_bl[i][j][k][3][1] = gdd_bl[i][j][k][1][3];
-                gdd_bl[i][j][k][3][2] = gdd_bl[i][j][k][2][3];
-                gdd_bl[i][j][k][3][3] = (r2 + a2 + 2. * r * a2 * sinth2 / sigma) * sinth2;
+                    gdd_bl[i][j][k][3][0] = gdd_bl[i][j][k][0][3];
+                    gdd_bl[i][j][k][3][1] = gdd_bl[i][j][k][1][3];
+                    gdd_bl[i][j][k][3][2] = gdd_bl[i][j][k][2][3];
+                    gdd_bl[i][j][k][3][3] = (r2 + a2 + 2. * r * a2 * sinth2 / sigma) * sinth2;
 
-                //ks metric
-                gdd_ks[i][j][k][0][0] = gdd_bl[i][j][k][0][0];//tt component: the same as bl metric
-                gdd_ks[i][j][k][0][1] = 2. * r / sigma;
-                gdd_ks[i][j][k][0][2] = 0.;
-                gdd_ks[i][j][k][0][3] = -2. * a * r * sinth2 / sigma;
+                    //ks metric
+                    gdd_ks[i][j][k][0][0] = gdd_bl[i][j][k][0][0];//tt component: the same as bl metric
+                    gdd_ks[i][j][k][0][1] = 2. * r / sigma;
+                    gdd_ks[i][j][k][0][2] = 0.;
+                    gdd_ks[i][j][k][0][3] = -2. * a * r * sinth2 / sigma;
 
-                gdd_ks[i][j][k][1][0] = gdd_ks[i][j][k][0][1];
-                gdd_ks[i][j][k][1][1] = 1. + 2. * r / sigma;
-                gdd_ks[i][j][k][1][2] = 0.;
-                gdd_ks[i][j][k][1][3] = -a * sinth2 * (1. + 2. * r / sigma);
+                    gdd_ks[i][j][k][1][0] = gdd_ks[i][j][k][0][1];
+                    gdd_ks[i][j][k][1][1] = 1. + 2. * r / sigma;
+                    gdd_ks[i][j][k][1][2] = 0.;
+                    gdd_ks[i][j][k][1][3] = -a * sinth2 * (1. + 2. * r / sigma);
 
-                gdd_ks[i][j][k][2][0] = gdd_ks[i][j][k][0][2];
-                gdd_ks[i][j][k][2][1] = gdd_ks[i][j][k][1][2];
-                gdd_ks[i][j][k][2][2] = sigma;
-                gdd_ks[i][j][k][2][3] = 0.;
+                    gdd_ks[i][j][k][2][0] = gdd_ks[i][j][k][0][2];
+                    gdd_ks[i][j][k][2][1] = gdd_ks[i][j][k][1][2];
+                    gdd_ks[i][j][k][2][2] = sigma;
+                    gdd_ks[i][j][k][2][3] = 0.;
 
-                gdd_ks[i][j][k][3][0] = gdd_ks[i][j][k][0][3];
-                gdd_ks[i][j][k][3][1] = gdd_ks[i][j][k][1][3];
-                gdd_ks[i][j][k][3][2] = gdd_ks[i][j][k][2][3];
-                gdd_ks[i][j][k][3][3] = sinth2 * (sigma + a2 * sinth2 * (1. + 2. * r / sigma));
+                    gdd_ks[i][j][k][3][0] = gdd_ks[i][j][k][0][3];
+                    gdd_ks[i][j][k][3][1] = gdd_ks[i][j][k][1][3];
+                    gdd_ks[i][j][k][3][2] = gdd_ks[i][j][k][2][3];
+                    gdd_ks[i][j][k][3][3] = sinth2 * (sigma + a2 * sinth2 * (1. + 2. * r / sigma));
 
-                //mks metric
-                gdd_mks[i][j][k][0][0] = gdd_ks[i][j][k][0][0] * tfac * tfac;
-                gdd_mks[i][j][k][0][1] = gdd_ks[i][j][k][0][1] * tfac * rfac;
-                gdd_mks[i][j][k][0][2] = gdd_ks[i][j][k][0][2] * tfac * hfac;
-                gdd_mks[i][j][k][0][3] = gdd_ks[i][j][k][0][3] * tfac * pfac;
+                    //mks metric
+                    gdd_mks[i][j][k][0][0] = gdd_ks[i][j][k][0][0] * tfac * tfac;
+                    gdd_mks[i][j][k][0][1] = gdd_ks[i][j][k][0][1] * tfac * rfac;
+                    gdd_mks[i][j][k][0][2] = gdd_ks[i][j][k][0][2] * tfac * hfac;
+                    gdd_mks[i][j][k][0][3] = gdd_ks[i][j][k][0][3] * tfac * pfac;
 
-                gdd_mks[i][j][k][1][0] = gdd_mks[i][j][k][0][1];
-                gdd_mks[i][j][k][1][1] = gdd_ks[i][j][k][1][1] * rfac * rfac;
-                gdd_mks[i][j][k][1][2] = gdd_ks[i][j][k][1][2] * rfac * hfac;
-                gdd_mks[i][j][k][1][3] = gdd_ks[i][j][k][1][3] * rfac * pfac;
+                    gdd_mks[i][j][k][1][0] = gdd_mks[i][j][k][0][1];
+                    gdd_mks[i][j][k][1][1] = gdd_ks[i][j][k][1][1] * rfac * rfac;
+                    gdd_mks[i][j][k][1][2] = gdd_ks[i][j][k][1][2] * rfac * hfac;
+                    gdd_mks[i][j][k][1][3] = gdd_ks[i][j][k][1][3] * rfac * pfac;
 
-                gdd_mks[i][j][k][2][0] = gdd_mks[i][j][k][0][2];
-                gdd_mks[i][j][k][2][1] = gdd_mks[i][j][k][1][2];
-                gdd_mks[i][j][k][2][2] = gdd_ks[i][j][k][2][2] * hfac * hfac;
-                gdd_mks[i][j][k][2][3] = gdd_ks[i][j][k][2][3] * hfac * pfac;
+                    gdd_mks[i][j][k][2][0] = gdd_mks[i][j][k][0][2];
+                    gdd_mks[i][j][k][2][1] = gdd_mks[i][j][k][1][2];
+                    gdd_mks[i][j][k][2][2] = gdd_ks[i][j][k][2][2] * hfac * hfac;
+                    gdd_mks[i][j][k][2][3] = gdd_ks[i][j][k][2][3] * hfac * pfac;
 
-                gdd_mks[i][j][k][3][0] = gdd_mks[i][j][k][0][3];
-                gdd_mks[i][j][k][3][1] = gdd_mks[i][j][k][1][3];
-                gdd_mks[i][j][k][3][2] = gdd_mks[i][j][k][2][3];
-                gdd_mks[i][j][k][3][3] = gdd_ks[i][j][k][3][3] * pfac * pfac;
+                    gdd_mks[i][j][k][3][0] = gdd_mks[i][j][k][0][3];
+                    gdd_mks[i][j][k][3][1] = gdd_mks[i][j][k][1][3];
+                    gdd_mks[i][j][k][3][2] = gdd_mks[i][j][k][2][3];
+                    gdd_mks[i][j][k][3][3] = gdd_ks[i][j][k][3][3] * pfac * pfac;
 
-                //bl guu
-                guu_bl[i][j][k][0][0] = (-(r2 + a2) * (r2 + a2) / (SMALL + delta) + a2 * sinth2) / sigma;
-                guu_bl[i][j][k][0][1] = 0.;
-                guu_bl[i][j][k][0][2] = 0.;
-                guu_bl[i][j][k][0][3] = -2. * a * r / ((SMALL + delta) * sigma);
+                    //bl guu
+                    guu_bl[i][j][k][0][0] = (-(r2 + a2) * (r2 + a2) / (SMALL + delta) + a2 * sinth2) / sigma;
+                    guu_bl[i][j][k][0][1] = 0.;
+                    guu_bl[i][j][k][0][2] = 0.;
+                    guu_bl[i][j][k][0][3] = -2. * a * r / ((SMALL + delta) * sigma);
 
-                guu_bl[i][j][k][1][0] = guu_bl[i][j][k][0][1];
-                guu_bl[i][j][k][1][1] = delta / sigma;
-                guu_bl[i][j][k][1][2] = 0.;
-                guu_bl[i][j][k][1][3] = 0.;
+                    guu_bl[i][j][k][1][0] = guu_bl[i][j][k][0][1];
+                    guu_bl[i][j][k][1][1] = delta / sigma;
+                    guu_bl[i][j][k][1][2] = 0.;
+                    guu_bl[i][j][k][1][3] = 0.;
 
-                guu_bl[i][j][k][2][0] = guu_bl[i][j][k][0][2];
-                guu_bl[i][j][k][2][1] = guu_bl[i][j][k][1][2];
-                guu_bl[i][j][k][2][2] = 1. / sigma;
-                guu_bl[i][j][k][2][3] = 0.;
+                    guu_bl[i][j][k][2][0] = guu_bl[i][j][k][0][2];
+                    guu_bl[i][j][k][2][1] = guu_bl[i][j][k][1][2];
+                    guu_bl[i][j][k][2][2] = 1. / sigma;
+                    guu_bl[i][j][k][2][3] = 0.;
 
-                guu_bl[i][j][k][3][0] = guu_bl[i][j][k][0][3];
-                guu_bl[i][j][k][3][1] = guu_bl[i][j][k][1][3];
-                guu_bl[i][j][k][3][2] = guu_bl[i][j][k][2][3];
-                guu_bl[i][j][k][3][3] = (1. / sinth2 - a2 / delta) / sigma;
+                    guu_bl[i][j][k][3][0] = guu_bl[i][j][k][0][3];
+                    guu_bl[i][j][k][3][1] = guu_bl[i][j][k][1][3];
+                    guu_bl[i][j][k][3][2] = guu_bl[i][j][k][2][3];
+                    guu_bl[i][j][k][3][3] = (1. / sinth2 - a2 / delta) / sigma;
 
-                //ks guu
-                guu_ks[i][j][k][0][0] = -1. - 2. * r / sigma;
-                guu_ks[i][j][k][0][1] = 2. * r / sigma;
-                guu_ks[i][j][k][0][2] = 0.;
-                guu_ks[i][j][k][0][3] = 0.;
+                    //ks guu
+                    guu_ks[i][j][k][0][0] = -1. - 2. * r / sigma;
+                    guu_ks[i][j][k][0][1] = 2. * r / sigma;
+                    guu_ks[i][j][k][0][2] = 0.;
+                    guu_ks[i][j][k][0][3] = 0.;
 
-                guu_ks[i][j][k][1][0] = guu_ks[i][j][k][0][1];
-                guu_ks[i][j][k][1][1] = (r2 - 2. * r + a2) / sigma;
-                guu_ks[i][j][k][1][2] = 0.;
-                guu_ks[i][j][k][1][3] = a / sigma;
+                    guu_ks[i][j][k][1][0] = guu_ks[i][j][k][0][1];
+                    guu_ks[i][j][k][1][1] = (r2 - 2. * r + a2) / sigma;
+                    guu_ks[i][j][k][1][2] = 0.;
+                    guu_ks[i][j][k][1][3] = a / sigma;
 
-                guu_ks[i][j][k][2][0] = guu_ks[i][j][k][0][2];
-                guu_ks[i][j][k][2][1] = guu_ks[i][j][k][1][2];
-                guu_ks[i][j][k][2][2] = 1. / sigma;
-                guu_ks[i][j][k][2][3] = 0.;
+                    guu_ks[i][j][k][2][0] = guu_ks[i][j][k][0][2];
+                    guu_ks[i][j][k][2][1] = guu_ks[i][j][k][1][2];
+                    guu_ks[i][j][k][2][2] = 1. / sigma;
+                    guu_ks[i][j][k][2][3] = 0.;
 
-                guu_ks[i][j][k][3][0] = guu_ks[i][j][k][0][3];
-                guu_ks[i][j][k][3][1] = guu_ks[i][j][k][1][3];
-                guu_ks[i][j][k][3][2] = guu_ks[i][j][k][2][3];
-                guu_ks[i][j][k][3][3] = 1. / (sigma * sinth2);
+                    guu_ks[i][j][k][3][0] = guu_ks[i][j][k][0][3];
+                    guu_ks[i][j][k][3][1] = guu_ks[i][j][k][1][3];
+                    guu_ks[i][j][k][3][2] = guu_ks[i][j][k][2][3];
+                    guu_ks[i][j][k][3][3] = 1. / (sigma * sinth2);
 
-                //mks guu
-                guu_mks[i][j][k][0][0] = guu_ks[i][j][k][0][0] / (tfac * tfac);
-                guu_mks[i][j][k][0][1] = guu_ks[i][j][k][0][1] / (tfac * rfac);
-                guu_mks[i][j][k][0][2] = guu_ks[i][j][k][0][2] / (tfac * hfac);
-                guu_mks[i][j][k][0][3] = guu_ks[i][j][k][0][3] / (tfac * pfac);
+                    //mks guu
+                    guu_mks[i][j][k][0][0] = guu_ks[i][j][k][0][0] / (tfac * tfac);
+                    guu_mks[i][j][k][0][1] = guu_ks[i][j][k][0][1] / (tfac * rfac);
+                    guu_mks[i][j][k][0][2] = guu_ks[i][j][k][0][2] / (tfac * hfac);
+                    guu_mks[i][j][k][0][3] = guu_ks[i][j][k][0][3] / (tfac * pfac);
 
-                guu_mks[i][j][k][1][0] = guu_mks[i][j][k][0][1];
-                guu_mks[i][j][k][1][1] = guu_ks[i][j][k][1][1] / (rfac * rfac);
-                guu_mks[i][j][k][1][2] = guu_ks[i][j][k][1][2] / (rfac * hfac);
-                guu_mks[i][j][k][1][3] = guu_ks[i][j][k][1][3] / (rfac * pfac);
+                    guu_mks[i][j][k][1][0] = guu_mks[i][j][k][0][1];
+                    guu_mks[i][j][k][1][1] = guu_ks[i][j][k][1][1] / (rfac * rfac);
+                    guu_mks[i][j][k][1][2] = guu_ks[i][j][k][1][2] / (rfac * hfac);
+                    guu_mks[i][j][k][1][3] = guu_ks[i][j][k][1][3] / (rfac * pfac);
 
-                guu_mks[i][j][k][2][0] = guu_mks[i][j][k][0][2];
-                guu_mks[i][j][k][2][1] = guu_mks[i][j][k][1][2];
-                guu_mks[i][j][k][2][2] = guu_ks[i][j][k][2][2] / (hfac * hfac);
-                guu_mks[i][j][k][2][3] = guu_ks[i][j][k][2][3] / (hfac * pfac);
+                    guu_mks[i][j][k][2][0] = guu_mks[i][j][k][0][2];
+                    guu_mks[i][j][k][2][1] = guu_mks[i][j][k][1][2];
+                    guu_mks[i][j][k][2][2] = guu_ks[i][j][k][2][2] / (hfac * hfac);
+                    guu_mks[i][j][k][2][3] = guu_ks[i][j][k][2][3] / (hfac * pfac);
 
-                guu_mks[i][j][k][3][0] = guu_mks[i][j][k][0][3];
-                guu_mks[i][j][k][3][1] = guu_mks[i][j][k][1][3];
-                guu_mks[i][j][k][3][2] = guu_mks[i][j][k][2][3];
-                guu_mks[i][j][k][3][3] = guu_ks[i][j][k][3][3] / (pfac * pfac);
+                    guu_mks[i][j][k][3][0] = guu_mks[i][j][k][0][3];
+                    guu_mks[i][j][k][3][1] = guu_mks[i][j][k][1][3];
+                    guu_mks[i][j][k][3][2] = guu_mks[i][j][k][2][3];
+                    guu_mks[i][j][k][3][3] = guu_ks[i][j][k][3][3] / (pfac * pfac);
 
-                //sqrt(-g)
-                gdet_bl[i][j][k] = sinth * sigma;
-                gdet_ks[i][j][k] = gdet_bl[i][j][k];
-                gdet_mks[i][j][k] = gdet_ks[i][j][k] * (tfac * rfac * hfac * pfac);
+                    //sqrt(-g)
+                    gdet_bl[i][j][k] = sinth * sigma;
+                    gdet_ks[i][j][k] = gdet_bl[i][j][k];
+                    gdet_mks[i][j][k] = gdet_ks[i][j][k] * (tfac * rfac * hfac * pfac);
 
-                /**************************************************************************************************
-                (3) get Jacobian matrix at the grid points
-                ***************************************************************************************************/
+                    /**************************************************************************************************
+                    (3) get Jacobian matrix at the grid points
+                    ***************************************************************************************************/
 
-                //BL coord to KS coord
-                J_bl2ks[i][j][k][0][0] = 1.;
-                J_bl2ks[i][j][k][0][1] = 2. * r / (SMALL + delta);
-                J_bl2ks[i][j][k][0][2] = 0.;
-                J_bl2ks[i][j][k][0][3] = 0.;
+                    //BL coord to KS coord
+                    J_bl2ks[i][j][k][0][0] = 1.;
+                    J_bl2ks[i][j][k][0][1] = 2. * r / (SMALL + delta);
+                    J_bl2ks[i][j][k][0][2] = 0.;
+                    J_bl2ks[i][j][k][0][3] = 0.;
 
-                J_bl2ks[i][j][k][1][0] = 0.;
-                J_bl2ks[i][j][k][1][1] = 1.;
-                J_bl2ks[i][j][k][1][2] = 0.;
-                J_bl2ks[i][j][k][1][3] = 0.;
+                    J_bl2ks[i][j][k][1][0] = 0.;
+                    J_bl2ks[i][j][k][1][1] = 1.;
+                    J_bl2ks[i][j][k][1][2] = 0.;
+                    J_bl2ks[i][j][k][1][3] = 0.;
 
-                J_bl2ks[i][j][k][2][0] = 0.;
-                J_bl2ks[i][j][k][2][1] = 0.;
-                J_bl2ks[i][j][k][2][2] = 1.;
-                J_bl2ks[i][j][k][2][3] = 0.;
+                    J_bl2ks[i][j][k][2][0] = 0.;
+                    J_bl2ks[i][j][k][2][1] = 0.;
+                    J_bl2ks[i][j][k][2][2] = 1.;
+                    J_bl2ks[i][j][k][2][3] = 0.;
 
-                J_bl2ks[i][j][k][3][0] = 0.;
-                J_bl2ks[i][j][k][3][1] = a / (SMALL + delta);
-                J_bl2ks[i][j][k][3][2] = 0.;
-                J_bl2ks[i][j][k][3][3] = 1.;
+                    J_bl2ks[i][j][k][3][0] = 0.;
+                    J_bl2ks[i][j][k][3][1] = a / (SMALL + delta);
+                    J_bl2ks[i][j][k][3][2] = 0.;
+                    J_bl2ks[i][j][k][3][3] = 1.;
 
-                //KS coord to BL coord
-                J_ks2bl[i][j][k][0][0] = 1.;
-                J_ks2bl[i][j][k][0][1] = -2. * r / (SMALL + delta);
-                J_ks2bl[i][j][k][0][2] = 0.;
-                J_ks2bl[i][j][k][0][3] = 0.;
+                    //KS coord to BL coord
+                    J_ks2bl[i][j][k][0][0] = 1.;
+                    J_ks2bl[i][j][k][0][1] = -2. * r / (SMALL + delta);
+                    J_ks2bl[i][j][k][0][2] = 0.;
+                    J_ks2bl[i][j][k][0][3] = 0.;
 
-                J_ks2bl[i][j][k][1][0] = 0.;
-                J_ks2bl[i][j][k][1][1] = 1.;
-                J_ks2bl[i][j][k][1][2] = 0.;
-                J_ks2bl[i][j][k][1][3] = 0.;
+                    J_ks2bl[i][j][k][1][0] = 0.;
+                    J_ks2bl[i][j][k][1][1] = 1.;
+                    J_ks2bl[i][j][k][1][2] = 0.;
+                    J_ks2bl[i][j][k][1][3] = 0.;
 
-                J_ks2bl[i][j][k][2][0] = 0.;
-                J_ks2bl[i][j][k][2][1] = 0.;
-                J_ks2bl[i][j][k][2][2] = 1.;
-                J_ks2bl[i][j][k][2][3] = 0.;
+                    J_ks2bl[i][j][k][2][0] = 0.;
+                    J_ks2bl[i][j][k][2][1] = 0.;
+                    J_ks2bl[i][j][k][2][2] = 1.;
+                    J_ks2bl[i][j][k][2][3] = 0.;
 
-                J_ks2bl[i][j][k][3][0] = 0.;
-                J_ks2bl[i][j][k][3][1] = -a / (SMALL + delta);
-                J_ks2bl[i][j][k][3][2] = 0.;
-                J_ks2bl[i][j][k][3][3] = 1.;
+                    J_ks2bl[i][j][k][3][0] = 0.;
+                    J_ks2bl[i][j][k][3][1] = -a / (SMALL + delta);
+                    J_ks2bl[i][j][k][3][2] = 0.;
+                    J_ks2bl[i][j][k][3][3] = 1.;
 
-                //KS coord to MKS coord
-                J_ks2mks[i][j][k][0][0] = 1.;
-                J_ks2mks[i][j][k][0][1] = 0.;
-                J_ks2mks[i][j][k][0][2] = 0.;
-                J_ks2mks[i][j][k][0][3] = 0.;
+                    //KS coord to MKS coord
+                    J_ks2mks[i][j][k][0][0] = 1.;
+                    J_ks2mks[i][j][k][0][1] = 0.;
+                    J_ks2mks[i][j][k][0][2] = 0.;
+                    J_ks2mks[i][j][k][0][3] = 0.;
 
-                J_ks2mks[i][j][k][1][0] = 0.;
-                J_ks2mks[i][j][k][1][1] = rfac;
-                J_ks2mks[i][j][k][1][2] = 0.;
-                J_ks2mks[i][j][k][1][3] = 0.;
+                    J_ks2mks[i][j][k][1][0] = 0.;
+                    J_ks2mks[i][j][k][1][1] = rfac;
+                    J_ks2mks[i][j][k][1][2] = 0.;
+                    J_ks2mks[i][j][k][1][3] = 0.;
 
-                J_ks2mks[i][j][k][2][0] = 0.;
-                J_ks2mks[i][j][k][2][1] = 0.;
-                J_ks2mks[i][j][k][2][2] = hfac;
-                J_ks2mks[i][j][k][2][3] = 0.;
+                    J_ks2mks[i][j][k][2][0] = 0.;
+                    J_ks2mks[i][j][k][2][1] = 0.;
+                    J_ks2mks[i][j][k][2][2] = hfac;
+                    J_ks2mks[i][j][k][2][3] = 0.;
 
-                J_ks2mks[i][j][k][3][0] = 0.;
-                J_ks2mks[i][j][k][3][1] = 0.;
-                J_ks2mks[i][j][k][3][2] = 0.;
-                J_ks2mks[i][j][k][3][3] = 1.;
+                    J_ks2mks[i][j][k][3][0] = 0.;
+                    J_ks2mks[i][j][k][3][1] = 0.;
+                    J_ks2mks[i][j][k][3][2] = 0.;
+                    J_ks2mks[i][j][k][3][3] = 1.;
 
-                //MKS coord to KS coord
-                J_mks2ks[i][j][k][0][0] = 1.;
-                J_mks2ks[i][j][k][0][1] = 0.;
-                J_mks2ks[i][j][k][0][2] = 0.;
-                J_mks2ks[i][j][k][0][3] = 0.;
+                    //MKS coord to KS coord
+                    J_mks2ks[i][j][k][0][0] = 1.;
+                    J_mks2ks[i][j][k][0][1] = 0.;
+                    J_mks2ks[i][j][k][0][2] = 0.;
+                    J_mks2ks[i][j][k][0][3] = 0.;
 
-                J_mks2ks[i][j][k][1][0] = 0.;
-                J_mks2ks[i][j][k][1][1] = 1. / rfac;
-                J_mks2ks[i][j][k][1][2] = 0.;
-                J_mks2ks[i][j][k][1][3] = 0.;
+                    J_mks2ks[i][j][k][1][0] = 0.;
+                    J_mks2ks[i][j][k][1][1] = 1. / rfac;
+                    J_mks2ks[i][j][k][1][2] = 0.;
+                    J_mks2ks[i][j][k][1][3] = 0.;
 
-                J_mks2ks[i][j][k][2][0] = 0.;
-                J_mks2ks[i][j][k][2][1] = 0.;
-                J_mks2ks[i][j][k][2][2] = 1. / hfac;
-                J_mks2ks[i][j][k][2][3] = 0.;
+                    J_mks2ks[i][j][k][2][0] = 0.;
+                    J_mks2ks[i][j][k][2][1] = 0.;
+                    J_mks2ks[i][j][k][2][2] = 1. / hfac;
+                    J_mks2ks[i][j][k][2][3] = 0.;
 
-                J_mks2ks[i][j][k][3][0] = 0.;
-                J_mks2ks[i][j][k][3][1] = 0.;
-                J_mks2ks[i][j][k][3][2] = 0.;
-                J_mks2ks[i][j][k][3][3] = 1.;
+                    J_mks2ks[i][j][k][3][0] = 0.;
+                    J_mks2ks[i][j][k][3][1] = 0.;
+                    J_mks2ks[i][j][k][3][2] = 0.;
+                    J_mks2ks[i][j][k][3][3] = 1.;
 
-                /**************************************************************************************************
-                (4) get primitive variables at the grid points
-                ***************************************************************************************************/
-                prim[i][j][k][RHO] = 0.;
-                prim[i][j][k][UU] = 0.;
-                prim[i][j][k][U1] = 0.;
-                prim[i][j][k][U2] = 0.;
-                prim[i][j][k][U3] = 0.;
-                prim[i][j][k][B1] = 0.;
-                prim[i][j][k][B2] = 0.;
-                prim[i][j][k][B3] = 0.;
+                    /**************************************************************************************************
+                    (4) get primitive variables at the grid points
+                    ***************************************************************************************************/
+                    primArray(i, j, k, RHO) = 0.;
+                    primArray(i, j, k, UU) = 0.;
+                    primArray(i, j, k, U1) = 0.;
+                    primArray(i, j, k, U2) = 0.;
+                    primArray(i, j, k, U3) = 0.;
+                    primArray(i, j, k, B1) = 0.;
+                    primArray(i, j, k, B2) = 0.;
+                    primArray(i, j, k, B3) = 0.;
 
-                if (r >= rin) {
-                    lnh = 0.5 * log((1. + sqrt(1. + 4. * (l * l * sigma * sigma) * delta / (AA * AA * sinth2))) / (sigma * delta / AA))
-                        - 0.5 * sqrt(1. + 4. * (l * l * sigma * sigma) * delta / (AA * AA * sinth2))
-                        - 2. * a * r * l / AA
-                        - 0.5 * log((1. + sqrt(1. + 4. * (l * l * SSin * SSin) * DDin / (AAin * AAin * sthin * sthin))) / (SSin * DDin / AAin))
-                        + 0.5 * sqrt(1. + 4. * (l * l * SSin * SSin) * DDin / (AAin * AAin * sthin * sthin))
-                        + 2. * a * rin * l / AAin;
-                }
-                else
-                    lnh = 1.;
+                    if (r >= rin) {
+                        lnh = 0.5 * log((1. + sqrt(1. + 4. * (l * l * sigma * sigma) * delta / (AA * AA * sinth2))) / (sigma * delta / AA))
+                            - 0.5 * sqrt(1. + 4. * (l * l * sigma * sigma) * delta / (AA * AA * sinth2))
+                            - 2. * a * r * l / AA
+                            - 0.5 * log((1. + sqrt(1. + 4. * (l * l * SSin * SSin) * DDin / (AAin * AAin * sthin * sthin))) / (SSin * DDin / AAin))
+                            + 0.5 * sqrt(1. + 4. * (l * l * SSin * SSin) * DDin / (AAin * AAin * sthin * sthin))
+                            + 2. * a * rin * l / AAin;
+                    }
+                    else
+                        lnh = 1.;
 
-                /*inside torus*/
-                if (r >= rin && lnh >= 0.) {
-                    hm1 = exp(lnh) - 1.;
-                    rho = pow(hm1 * (gam - 1.) / (kappa * gam), 1. / (gam - 1.));
-                    rho = rho * (1. + 0.1 * sin(phi));
-                    u = kappa * pow(rho, gam) / (gam - 1.);
-                    ur = 0.;
-                    uh = 0.;
-                    expm2chi = sigma * sigma * delta / (AA * AA * sinth2);
-                    up1 = sqrt((-1. + sqrt(1. + 4. * l * l * expm2chi)) / 2.);
-                    up = 2. * a * r * sqrt(1. + up1 * up1) / sqrt(AA * sigma * delta) + sqrt(sigma / AA) * up1 / sinth;
-                    prim[i][j][k][RHO] = rho;
-                    if (rho > rhomax) rhomax = rho;
-                    //rancval = ranc(0);
-                    prim[i][j][k][UU] = u;// * (1. + 4.e-2 * (rancval - 0.5));
-                    if (u > umax && r > rin) umax = u;
-                    prim[i][j][k][U1] = ur;
-                    prim[i][j][k][U2] = uh;
-                    prim[i][j][k][U3] = up;
-                }
-                if (r >= rin) {
-                    convert_ui(i, j, k);      //transfrom U1, U2, U3 from bl coord to mks coord
+                    /*inside torus*/
+                    if (r >= rin && lnh >= 0.) {
+                        hm1 = exp(lnh) - 1.;
+                        rho = pow(hm1 * (gam - 1.) / (kappa * gam), 1. / (gam - 1.));
+                        rho = rho * (1. + 0.1 * sin(phi));
+                        u = kappa * pow(rho, gam) / (gam - 1.);
+                        ur = 0.;
+                        uh = 0.;
+                        expm2chi = sigma * sigma * delta / (AA * AA * sinth2);
+                        up1 = sqrt((-1. + sqrt(1. + 4. * l * l * expm2chi)) / 2.);
+                        up = 2. * a * r * sqrt(1. + up1 * up1) / sqrt(AA * sigma * delta) + sqrt(sigma / AA) * up1 / sinth;
+                        primArray(i, j, k, RHO) = rho;
+                        if (rho > rhomax) rhomax = rho;
+                        //rancval = ranc(0);
+                        primArray(i, j, k, UU) = u;// * (1. + 4.e-2 * (rancval - 0.5));
+                        if (u > umax && r > rin) umax = u;
+                        primArray(i, j, k, U1) = ur;
+                        primArray(i, j, k, U2) = uh;
+                        primArray(i, j, k, U3) = up;
+                    }
+                    if (r >= rin) {
+                        convert_ui(i, j, k, primArray);      //transfrom U1, U2, U3 from bl coord to mks coord
+                    }
                 }
             }
         }
     }
     /*Normalize the density rho*/
     printf("rhomax before normalization: %lf \n", rhomax);
-    for (int i = 0; i < N1; i++) {
-        for (int j = 0; j < N2; j++) {
-            for (int k = 0; k < N3; k++) {
-                prim[i][j][k][RHO] /= rhomax;
-                prim[i][j][k][UU] /= rhomax;
-            }
-        }
+    for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
+	{
+		const amrex::Box& bx = mfi.tilebox();
+		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+		{
+            primArray(i, j, k, RHO) /= rhomax;
+            primArray(i, j, k, UU) /= rhomax;
+        });
     }
     /*Aphi at the corner*/
     double rho_ave, q, bsq_max;
     A[N1][N2][N3] = 0.;
-    for (int i = 0; i < N1; i++) {
-        for (int j = 0; j < N2; j++) {
-            for (int k = 0; k < N3; k++) {
-                A[i][j][k] = 0.;
-                r = BL_coord1[i][j][k];
-                if (r >= rin) {
-                    rho_ave = 0.25 * (prim[i][j][k][RHO] + prim[i - 1][j][k][RHO] + prim[i][j - 1][k][RHO] + prim[i - 1][j - 1][k][RHO]);
-                    q = rho_ave - 0.2;
-                    if (q > 0.) {
-                        A[i][j][k] = q;
-                        //printf("A: %lf \n", A[i][j][k]);
+    for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
+	{
+		const amrex::Box& bx = mfi.tilebox();
+		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
+        for (int i = 0; i < N1; i++) {
+            for (int j = 0; j < N2; j++) {
+                for (int k = 0; k < N3; k++) {
+                    A[i][j][k] = 0.;
+                    r = BL_coord1[i][j][k];
+                    if (r >= rin) {
+                        rho_ave = 0.25 * (primArray(i, j, k, RHO) + primArray(i - 1, j, k, RHO) + primArray(i, j - 1, k, RHO) + primArray(i - 1, j - 1, k, RHO));
+                        q = rho_ave - 0.2;
+                        if (q > 0.) {
+                            A[i][j][k] = q;
+                        }
                     }
                 }
             }
@@ -505,13 +504,18 @@ void init() {
     bsq_max = compute_B_from_A(A);
     printf("bsq_max before normalization: %lf \n", bsq_max);
     double pg, pg_max = 0.;
-    for (int i = 0; i < N1; i++) {
-        for (int j = 0; j < N2; j++) {
-            for (int k = 0; k < N3; k++) {
-                r = BL_coord1[i][j][k];
-                if (r >= rin) {
-                    pg = (gam - 1.) * prim[i][j][k][UU];
-                    if (pg > pg_max) pg_max = pg;
+    for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
+	{
+		const amrex::Box& bx = mfi.tilebox();
+		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
+        for (int i = 0; i < N1; i++) {
+            for (int j = 0; j < N2; j++) {
+                for (int k = 0; k < N3; k++) {
+                    r = BL_coord1[i][j][k];
+                    if (r >= rin) {
+                        pg = (gam - 1.) * primArray(i, j, k, UU);
+                        if (pg > pg_max) pg_max = pg;
+                    }
                 }
             }
         }
@@ -524,18 +528,23 @@ void init() {
     printf("target beta: %lf \n", beta);
     norm = sqrt(beta_min / beta);
     printf("normalization factor: %lf \n", norm);
-    for (int i = 0; i < N1; i++) {
-        for (int j = 0; j < N2; j++) {
-            for (int k = 0; k < N3; k++) {
-                prim[i][j][k][B1] *= norm;
-                prim[i][j][k][B2] *= norm;
-                prim[i][j][k][B3] *= norm;
-                r = BL_coord1[i][j][k];
-                if (r >= rin) {
-                    prim[i][j][k][BSQ] = bsq_cal(i, j, k);
-                }
-                else {
-                    prim[i][j][k][BSQ] = 0.;
+    for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
+	{
+		const amrex::Box& bx = mfi.tilebox();
+		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
+        for (int i = 0; i < N1; i++) {
+            for (int j = 0; j < N2; j++) {
+                for (int k = 0; k < N3; k++) {
+                    primArray(i, j, k, B1) *= norm;
+                    primArray(i, j, k, B2) *= norm;
+                    primArray(i, j, k, B3) *= norm;
+                    r = BL_coord1[i][j][k];
+                    if (r >= rin) {
+                        primArray(i, j, k, BSQ) = bsq_cal(i, j, k, primArray);
+                    }
+                    else {
+                        primArray(i, j, k, BSQ) = 0.;
+                    }
                 }
             }
         }
