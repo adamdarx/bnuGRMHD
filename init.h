@@ -86,7 +86,7 @@ double compute_B_from_A(double A[N1 + 1][N2 + 1][N3 + 1]) {
     double bsq, r;
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         for (int i = 1; i < N1; i++) {
             for (int j = 1; j < N2; j++) {
@@ -112,7 +112,7 @@ double compute_B_from_A(double A[N1 + 1][N2 + 1][N3 + 1]) {
 void fix() {
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
 		{
@@ -152,7 +152,7 @@ void init()
     double pfac = 1;
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         for (int i = 0; i < N1; i++) {
             for (int j = 0; j < N2; j++) {
@@ -469,7 +469,7 @@ void init()
     printf("rhomax before normalization: %lf \n", rhomax);
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
 		{
@@ -482,7 +482,7 @@ void init()
     A[N1][N2][N3] = 0.;
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         for (int i = 0; i < N1; i++) {
             for (int j = 0; j < N2; j++) {
@@ -506,7 +506,7 @@ void init()
     double pg, pg_max = 0.;
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         for (int i = 0; i < N1; i++) {
             for (int j = 0; j < N2; j++) {
@@ -530,7 +530,7 @@ void init()
     printf("normalization factor: %lf \n", norm);
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         for (int i = 0; i < N1; i++) {
             for (int j = 0; j < N2; j++) {

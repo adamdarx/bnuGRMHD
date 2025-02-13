@@ -92,9 +92,9 @@ int main(int argc, char* argv[])
 					}
 
 	// 利用中心差分计算alpha的导数
-	for (amrex::MFIter mfi(alphaDiffField,amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi)
+	for (amrex::MFIter mfi(alphaDiffField); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = alphaDiffField[mfi].array();
 		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
 		{
@@ -106,9 +106,9 @@ int main(int argc, char* argv[])
 	}
 
 	for (int comp = 0; comp < 3; comp++)
-		for (amrex::MFIter mfi(alphaDiffHalfField[comp],amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi)
+		for (amrex::MFIter mfi(alphaDiffHalfField[comp]); mfi.isValid(); ++mfi)
 		{
-			const amrex::Box& bx = mfi.tilebox();
+			const amrex::Box& bx = mfi.validbox();
 			amrex::Array4<amrex::Real> const& a = alphaDiffHalfField[comp][mfi].array();
 			amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
 			{
@@ -140,9 +140,9 @@ int main(int argc, char* argv[])
 						}
 	init();
 	WriteSingleLevelPlotfile("plt000", prim, {"RHO", "UU", "U0", "U1", "U2", "U3", "B1", "B2", "B3", "BSQ"}, geom, 0., 0);
-	for (amrex::MFIter mfi(ksi,amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi)
+	for (amrex::MFIter mfi(ksi); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = ksi[mfi].array();
 		amrex::Array4<amrex::Real const> const& b = prim[mfi].array();
 		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
@@ -175,9 +175,9 @@ int main(int argc, char* argv[])
 		
 		for(int comp = 0; comp < 3; comp++)
 		{
-			for (amrex::MFIter mfi(fluxLLF[comp],amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi)
+			for (amrex::MFIter mfi(fluxLLF[comp]); mfi.isValid(); ++mfi)
 			{
-				const amrex::Box& bx = mfi.tilebox();
+				const amrex::Box& bx = mfi.validbox();
 				amrex::Array4<amrex::Real> const& a = fluxLLF[comp][mfi].array();
 				amrex::Array4<amrex::Real const> const& b = fluxHLL[comp][mfi].const_array();
 				amrex::Array4<amrex::Real const> const& c = fluxTVDLF[comp][mfi].const_array();
@@ -195,7 +195,7 @@ int main(int argc, char* argv[])
 
 		for (amrex::MFIter mfi(c[POS][RIGHT][0]); mfi.isValid(); ++mfi)
 		{
-			const amrex::Box& bx = mfi.tilebox();
+			const amrex::Box& bx = mfi.validbox();
 
 			amrex::Array4<amrex::Real const> const& cPR0 = c[POS][RIGHT][0][mfi].array();
 			amrex::Array4<amrex::Real const> const& cPL0 = c[POS][LEFT][0][mfi].array();
@@ -233,7 +233,7 @@ int main(int argc, char* argv[])
 
 		for (amrex::MFIter mfi(con); mfi.isValid(); ++mfi)
 		{
-			const amrex::Box& bx = mfi.tilebox();
+			const amrex::Box& bx = mfi.validbox();
 			
 			amrex::Array4<amrex::Real> const& a = con[mfi].array();
 			amrex::Array4<amrex::Real const> const& b = src[mfi].array();
@@ -274,7 +274,7 @@ int main(int argc, char* argv[])
 
 		for (amrex::MFIter mfi(fluxSmoothLLF[0]); mfi.isValid(); ++mfi)
 		{
-			const amrex::Box& bx = mfi.tilebox();
+			const amrex::Box& bx = mfi.validbox();
 
 			amrex::Array4<amrex::Real> const& a1 = fluxSmoothLLF[0][mfi].array();
 			amrex::Array4<amrex::Real> const& a2 = fluxSmoothLLF[1][mfi].array();
@@ -296,7 +296,7 @@ int main(int argc, char* argv[])
 
 		for (amrex::MFIter mfi(con); mfi.isValid(); ++mfi)
 		{
-			const amrex::Box& bx = mfi.tilebox();
+			const amrex::Box& bx = mfi.validbox();
 			
 			amrex::Array4<amrex::Real> const& a = con[mfi].array();
 			amrex::Array4<amrex::Real const> const& b = src[mfi].array();

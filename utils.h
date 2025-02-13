@@ -28,10 +28,7 @@ constexpr double X2max = (PI - SMALL);
 constexpr double X3min = (SMALL);
 constexpr double X3max = (2. * PI - SMALL);
 constexpr auto R0 = (0.);
-constexpr auto isX1periodical = false;
-constexpr auto isX2periodical = false;
-constexpr auto isX3periodical = false;
-constexpr auto cour = 1e-2;
+constexpr auto cour = 0.8;
 constexpr auto LEFT = 0;
 constexpr auto RIGHT = 1;
 constexpr auto NEG = 0;
@@ -179,9 +176,9 @@ void ghostify() {
 				a(i + NG, j + NG, k + NG, l) = b(i, j, k, l);
 		});
 	}
-	for (amrex::MFIter mfi(primGhost); mfi.isValid(); ++mfi)
+	for (amrex::MFIter mfi(primLR[LEFT][0]); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = primGhost[mfi].array();
 		for (int i = NG - 1; i >= 0; i--)
 		{
@@ -289,7 +286,7 @@ void ghostify() {
 void interpolate() {
 	for (amrex::MFIter mfi(primLR[LEFT][0]); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& aL0 = primLR[LEFT][0][mfi].array();
 		amrex::Array4<amrex::Real> const& aL1 = primLR[LEFT][1][mfi].array();
 		amrex::Array4<amrex::Real> const& aL2 = primLR[LEFT][2][mfi].array();
@@ -333,7 +330,7 @@ void primLR2conLR() {
 		{
 			for (amrex::MFIter mfi(conLR[LR][comp]); mfi.isValid(); ++mfi)
 			{
-				const amrex::Box& bx = mfi.tilebox();
+				const amrex::Box& bx = mfi.validbox();
 				amrex::Array4<amrex::Real> const& a = conLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& b = primLR[LR][comp][mfi].array();
 				amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
@@ -366,7 +363,7 @@ void primLR2srcLR() {
 		{
 			for (amrex::MFIter mfi(srcLR[LR][comp]); mfi.isValid(); ++mfi)
 			{
-				const amrex::Box& bx = mfi.tilebox();
+				const amrex::Box& bx = mfi.validbox();
 				amrex::Array4<amrex::Real> const& a = srcLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& b = primLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& c = conLR[LR][comp][mfi].array();
@@ -411,7 +408,7 @@ void primLR2fluxLR() {
 		for (int comp = 0; comp < 3; comp++)
 			for (amrex::MFIter mfi(fluxLR[LR][comp]); mfi.isValid(); ++mfi)
 			{
-				const amrex::Box& bx = mfi.tilebox();
+				const amrex::Box& bx = mfi.validbox();
 				amrex::Array4<amrex::Real> const& a = fluxLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& b = primLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& c = conLR[LR][comp][mfi].array();
@@ -447,7 +444,7 @@ void primLR2cLR() {
 			for (int comp = 0; comp < 3; comp++)
 				for (amrex::MFIter mfi(c[PN][LR][comp]); mfi.isValid(); ++mfi)
 				{
-					const amrex::Box& bx = mfi.tilebox();
+					const amrex::Box& bx = mfi.validbox();
 					amrex::Array4<amrex::Real> const& a = c[PN][LR][comp][mfi].array();
 					amrex::Array4<amrex::Real> const& b = primLR[LR][comp][mfi].array();
 					amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
@@ -483,7 +480,7 @@ void calFluxHHL() {
 	for (int comp = 0; comp < 3; comp++)
 		for (amrex::MFIter mfi(fluxHLL[comp]); mfi.isValid(); ++mfi)
 		{
-			const amrex::Box& bx = mfi.tilebox();
+			const amrex::Box& bx = mfi.validbox();
 			amrex::Array4<amrex::Real> const& a = fluxHLL[comp][mfi].array();
 			amrex::Array4<amrex::Real> const& bPR = c[POS][RIGHT][comp][mfi].array();
 			amrex::Array4<amrex::Real> const& bPL = c[POS][LEFT][comp][mfi].array();
@@ -505,7 +502,7 @@ void calFluxTVDLF() {
 	for (int comp = 0; comp < 3; comp++)
 		for (amrex::MFIter mfi(fluxTVDLF[comp]); mfi.isValid(); ++mfi)
 		{
-			const amrex::Box& bx = mfi.tilebox();
+			const amrex::Box& bx = mfi.validbox();
 			amrex::Array4<amrex::Real> const& a = fluxTVDLF[comp][mfi].array();
 			amrex::Array4<amrex::Real> const& bPR = c[POS][RIGHT][comp][mfi].array();
 			amrex::Array4<amrex::Real> const& bPL = c[POS][LEFT][comp][mfi].array();
@@ -530,7 +527,7 @@ void prim2con()
 {
 	for (amrex::MFIter mfi(con); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = con[mfi].array();
 		amrex::Array4<amrex::Real> const& b = prim[mfi].array();
 		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
@@ -557,7 +554,7 @@ void prim2con()
 void prim2src() {
 	for (amrex::MFIter mfi(src); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = src[mfi].array();
 		amrex::Array4<amrex::Real> const& b = prim[mfi].array();
 		amrex::Array4<amrex::Real> const& c = con[mfi].array();
@@ -609,7 +606,7 @@ double df(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::V
 void con2prim() {
 	for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
-		const amrex::Box& bx = mfi.tilebox();
+		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = prim[mfi].array();
 		amrex::Array4<amrex::Real> const& b = con[mfi].array();
 		amrex::Array4<amrex::Real> const& c = ksi[mfi].array();
@@ -629,7 +626,7 @@ void con2prim() {
 					break;
 				x0 = x1;
 			}
-			if (x0 > SMALL || !isnan(x0) || !isinf(x0))
+			if (x0 > SMALL && !isnan(x0) && !isinf(x0))
 			{
 				c(i, j, k) = x0;
 				auto Gamma = 1 / sqrt(1 - square(i, j, k, S + SB * B / c(i, j, k), metricFuncField) / pow(c(i, j, k) + Bsq, 2));
