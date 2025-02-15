@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
 	amrex::IntVect dom_hiGhost(N1 + 2 * NG - 1, N2 + 2 * NG - 1, N3 + 2 * NG - 1);
 	amrex::Box domainGhost(dom_loGhost, dom_hiGhost);
 	amrex::BoxArray baGhost(domainGhost);
-	baGhost.maxSize(max_grid_size);
+	baGhost.maxSize(max_grid_size + NG);
 	amrex::DistributionMapping dmGhost(baGhost);
 	amrex::RealBox real_boxGhost ({X1min - NG * dx[0], X2min - NG * dx[1], X3min - NG * dx[2]}, {X1max + NG * dx[0], X2max + NG * dx[1], X3max + NG * dx[2]});
     amrex::Geometry geomGhost(domainGhost, &real_boxGhost);
@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
 	amrex::IntVect dom_hiHalf(N1 + 1 - 1, N2 + 1 - 1, N3 + 1 - 1);
 	amrex::Box domainHalf(dom_loHalf, dom_hiHalf);
 	amrex::BoxArray baHalf(domainHalf);
-	baHalf.maxSize(max_grid_size);
+	baHalf.maxSize(max_grid_size + 1);
 	amrex::DistributionMapping dmHalf(baHalf);
 	amrex::RealBox real_boxHalf ({X1min - 0.5 * dx[0], X2min - 0.5 * dx[1], X3min - 0.5 * dx[2]}, {X1max + 0.5 * dx[0], X2max + 0.5 * dx[1], X3max + 0.5 * dx[2]});
     amrex::Geometry geomHalf(domainHalf, &real_boxHalf);
@@ -86,9 +86,9 @@ int main(int argc, char* argv[])
 				for (int row = 0; row < 4; row++)
 					for (int col = 0; col < 4; col++)
 					{
-						metricFuncHalfField[0](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i - 1) * dx1 / 2, X2min + (j + NG) * dx2, X3min + (k + NG) * dx3);
-						metricFuncHalfField[1](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + NG) * dx1, X2min + (2 * i - 1) * dx2 / 2, X3min + (k + NG) * dx3);
-						metricFuncHalfField[2](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + NG) * dx1, X2min + (j + NG) * dx2, X3min + (2 * k - 1) * dx3 / 2);
+						metricFuncHalfField[0](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
+						metricFuncHalfField[1](i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
+						metricFuncHalfField[2](i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
 					}
 
 	// 利用中心差分计算alpha的导数
@@ -119,25 +119,25 @@ int main(int argc, char* argv[])
 			});
 		}
 
-	for (int i = 0; i < N1; i++)
-		for (int j = 0; j < N2; j++)
-			for (int k = 0; k < N3; k++)
+	for (int i = 0; i < N1 + 2 * NG; i++)
+		for (int j = 0; j < N2 + 2 * NG; j++)
+			for (int k = 0; k < N3 + 2 * NG; k++)
 				for(int l = 0; l < 4; l++)
 					for (int row = 0; row < 4; row++)
 						for (int col = 0; col < 4; col++)
 							metricDiffField(i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
 
-	for (int i = 0; i < N1; i++)
-		for (int j = 0; j < N2; j++)
-			for (int k = 0; k < N3; k++)
-				for (int l = 0; l < 4; l++)
-					for (int row = 0; row < 4; row++)
-						for (int col = 0; col < 4; col++)
-						{
-							metricDiffHalfField[0](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (2 * i - 1) * dx1 / 2, X2min + (j + NG) * dx2, X3min + (k + NG) * dx3);
-							metricDiffHalfField[1](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i + NG) * dx1, X2min + (2 * i - 1) * dx2 / 2, X3min + (k + NG) * dx3);
-							metricDiffHalfField[2](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i + NG) * dx1, X2min + (j + NG) * dx2, X3min + (2 * k - 1) * dx3 / 2);
-						}
+		for (int i = 0; i < N1; i++)
+			for (int j = 0; j < N2; j++)
+				for (int k = 0; k < N3; k++)
+					for (int l = 0; l < 4; l++)
+						for (int row = 0; row < 4; row++)
+							for (int col = 0; col < 4; col++)
+							{
+								metricDiffHalfField[0](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
+								metricDiffHalfField[1](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
+								metricDiffHalfField[2](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
+							}
 	init();
 	WriteSingleLevelPlotfile("plt000", prim, {"RHO", "UU", "U0", "U1", "U2", "U3", "B1", "B2", "B3", "BSQ"}, geom, 0., 0);
 	for (amrex::MFIter mfi(ksi); mfi.isValid(); ++mfi)
@@ -212,9 +212,11 @@ int main(int argc, char* argv[])
 			amrex::Array4<amrex::Real const> const& cNR2 = c[NEG][RIGHT][2][mfi].array();
 			amrex::Array4<amrex::Real const> const& cNL2 = c[NEG][LEFT][2][mfi].array();
 
-			for (int i = 0; i < N1; i++) {
-				for (int j = 0; j < N2; j++) {
-					for (int k = 0; k < N3; k++) {
+			const auto lo = lbound(bx);
+			const auto hi = ubound(bx);
+			for (int i = lo.x; i < hi.x; i++) {
+				for (int j = lo.y; j < hi.y; j++) {
+					for (int k = lo.z; k < hi.z; k++) {
 						auto c1max = max(0, cPR0(i, j, k), cPL0(i, j, k));
 						auto c1min = abs(min(-0, cNR0(i, j, k), cNL0(i, j, k)));
 						auto c2max = max(0, cPR1(i, j, k), cPL1(i, j, k));
@@ -319,10 +321,13 @@ int main(int argc, char* argv[])
 		
 		totalTime += clock() - start;
 		totalPhysicalTime += Delta_t;
-		std::cout << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		char filename[16];
-		sprintf(filename, "plt%0.3d", epoch);
-		WriteSingleLevelPlotfile(filename, prim, {"RHO", "UU", "U0", "U1", "U2", "U3", "B1", "B2", "B3", "BSQ"}, geom, totalPhysicalTime, epoch);
+		if(epoch)
+		{
+			std::cout << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
+			char filename[16];
+			sprintf(filename, "plt%0.3d", epoch);
+			WriteSingleLevelPlotfile(filename, prim, {"RHO", "UU", "U0", "U1", "U2", "U3", "B1", "B2", "B3", "BSQ"}, geom, totalPhysicalTime, epoch);
+		}
 	}
 	amrex::Finalize();
 	return 0;

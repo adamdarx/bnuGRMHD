@@ -15,8 +15,8 @@ constexpr auto h = (0.);
 constexpr auto SMALL = (1.e-16);
 constexpr auto theta = 0.;
 constexpr auto NDIM = (4);
-constexpr auto N1 = (16);
-constexpr auto N2 = (16);
+constexpr auto N1 = (128);
+constexpr auto N2 = (128);
 constexpr auto N3 = (4);
 constexpr auto NG = (2);
 constexpr auto max_grid_size = (16);
@@ -467,10 +467,10 @@ void primLR2cLR() {
 							auto cA_square = (Bsq * (1 - vsq) + pow(Bv, 2)) / (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU) + Bsq * (1 - vsq) + pow(Bv, 2));
 							auto vf_square = cA_square + cs_square - cA_square * cs_square;
 							auto metricInv = metric.m.inverse();
-							a(i, j, k) = (pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0) + (2 * PN - 1) * sqrt(abs(
+							a(i, j, k) = (pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0) + (2 * PN - 1) * sqrt(
 								pow((pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0), 2)
 								- (vf_square * metricInv(comp, comp) - (1 - vf_square) * ui(comp) * ui(comp)) / (vf_square * metricInv(0, 0) - (1 - vf_square) * u0 * u0)
-							));
+							);
 						}
 					});
 				}
@@ -595,8 +595,8 @@ void prim2src() {
 double f(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::Vector3d B, double x) {
 	auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
 	auto SB = dot(i + NG, j + NG, k + NG, S, B, metricFuncField);
-	auto Gamma = 1 / sqrt(1 - square(i, j, k, S + SB * B / x, metricFuncField) / pow(x + Bsq, 2));
-	return x - (gam - 1) / gam * (x - Gamma * D) / pow(Gamma, 2) - tau - D + Bsq - 0.5 * (Bsq / pow(Gamma, 2) + pow(SB, 2) / pow(x, 2));
+	auto oneOverGamma = sqrt(1 - square(i, j, k, S + SB * B / x, metricFuncField) / pow(x + Bsq, 2));
+	return x - (gam - 1) / gam * (x * pow(oneOverGamma, 2) - oneOverGamma * D) - tau - D + Bsq - 0.5 * (Bsq * pow(oneOverGamma, 2) + pow(SB, 2) / pow(x, 2));
 }
 
 double df(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::Vector3d B, double x) {

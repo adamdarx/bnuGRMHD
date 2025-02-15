@@ -1,3 +1,6 @@
 {
-    "cmake.sourceDirectory": "/wsl.localhost/Ubuntu/home/adamdarx/bnuGRMHD/build/_deps/eigen_code-src"
+    "cmake.sourceDirectory": "/wsl.localhost/Ubuntu/home/adamdarx/bnuGRMHD",
+    "files.associations": {
+        "iostream": "cpp"
+    }
 }
