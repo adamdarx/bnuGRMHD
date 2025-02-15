@@ -32,9 +32,9 @@ int main(int argc, char* argv[])
 					for (int row = 0; row < 4; row++)
 						for (int col = 0; col < 4; col++)
 						{
-							metricFuncHalfField[0](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i - 1) * dx1 / 2, X2min + (j + NG) * dx2, X3min + (k + NG) * dx3);
-							metricFuncHalfField[1](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + NG) * dx1, X2min + (2 * i - 1) * dx2 / 2, X3min + (k + NG) * dx3);
-							metricFuncHalfField[2](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i + NG) * dx1, X2min + (j + NG) * dx2, X3min + (2 * k - 1) * dx3 / 2);
+							metricFuncHalfField[0](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
+							metricFuncHalfField[1](i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
+							metricFuncHalfField[2](i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
 						}
 
 		// 利用中心差分计算alpha的导数
@@ -74,12 +74,12 @@ int main(int argc, char* argv[])
 						for (int row = 0; row < 4; row++)
 							for (int col = 0; col < 4; col++)
 							{
-								metricDiffHalfField[0](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (2 * i - 1) * dx1 / 2, X2min + (j + NG) * dx2, X3min + (k + NG) * dx3);
-								metricDiffHalfField[1](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i + NG) * dx1, X2min + (2 * i - 1) * dx2 / 2, X3min + (k + NG) * dx3);
-								metricDiffHalfField[2](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i + NG) * dx1, X2min + (j + NG) * dx2, X3min + (2 * k - 1) * dx3 / 2);
+								metricDiffHalfField[0](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
+								metricDiffHalfField[1](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
+								metricDiffHalfField[2](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
 							}
 		init();
-		char filename[13];
+		char filename[32];
 		sprintf(filename, "./data/data%0.4d.bin", 0);
 		write_bin(fopen(filename, "wb"));
 		for (int i = 0; i < N1; i++)
@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
 						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2](i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF[2][i][j][k + 1][l] - sqrt(metricFuncHalfField[2](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF[2][i][j][k][l]);
 
 
-		con2prim(con);
+		con2prim();
 
 		ghostify();
 
@@ -192,14 +192,14 @@ int main(int argc, char* argv[])
 						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1](i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[1][i][j + 1][k][l] - sqrt(metricFuncHalfField[1](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[1][i][j][k][l])
 						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2](i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[2][i][j][k + 1][l] - sqrt(metricFuncHalfField[2](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[2][i][j][k][l]);
 
-		con2prim(con);
+		con2prim();
 
 		fix();
 		
 		totalTime += clock() - start;
 		totalPhysicalTime += Delta_t;
 		std::cout << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		char filename[13];
+		char filename[32];
 		sprintf(filename, "./data/data%0.4d.bin", epoch);
 		write_bin(fopen(filename, "wb"));
 		ofs << "--------Epoch--------" << epoch << std::endl;
