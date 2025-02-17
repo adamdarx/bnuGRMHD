@@ -84,15 +84,18 @@ double bsq_cal(int i, int j, int k, amrex::Array4<amrex::Real> const& primArray)
 double compute_B_from_A(double A[N1 + 1][N2 + 1][N3 + 1]) {
     double bsq_max = 0.;
     double bsq, r;
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
-        for (int i = lo.x; i < hi.x; i++) {
-            for (int j = lo.y; j < hi.y; j++) {
-                for (int k = lo.z; k < hi.z; k++) {
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
                     if(i==0 || j==0) continue;
                     primArray(i, j, k, B1) = (A[i - 1][j][k] - A[i - 1][j - 1][k] +
                         A[i][j][k] - A[i][j - 1][k]) / (2. * dx2 * gdet_mks[i][j][k]);
@@ -113,22 +116,31 @@ double compute_B_from_A(double A[N1 + 1][N2 + 1][N3 + 1]) {
 
 //fix primitive variable by adding density rho
 void fix() {
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
-        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-		{
-            double r, rho_floor, ug_floor, bsq, sigma;
-            r = BL_coord1[i][j][k];
-            rho_floor = RHOMIN * pow(r, -3. / 2.);
-            ug_floor = UUMIN * pow(r, -3. / 2. * gam);
-            if (primArray(i, j, k, RHO) < rho_floor) primArray(i, j, k, RHO) = rho_floor;
-            if (primArray(i, j, k, UU) < ug_floor) primArray(i, j, k, UU) = ug_floor;
-            bsq = bsq_cal(i, j, k, primArray);
-            sigma = bsq / primArray(i, j, k, RHO);
-            if (sigma > SIGMAMAX) primArray(i, j, k, RHO) = bsq / SIGMAMAX;
-        });
+        const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
+                    double r, rho_floor, ug_floor, bsq, sigma;
+                    r = BL_coord1[i][j][k];
+                    rho_floor = RHOMIN * pow(r, -3. / 2.);
+                    ug_floor = UUMIN * pow(r, -3. / 2. * gam);
+                    if (primArray(i, j, k, RHO) < rho_floor) primArray(i, j, k, RHO) = rho_floor;
+                    if (primArray(i, j, k, UU) < ug_floor) primArray(i, j, k, UU) = ug_floor;
+                    bsq = bsq_cal(i, j, k, primArray);
+                    sigma = bsq / primArray(i, j, k, RHO);
+                    if (sigma > SIGMAMAX) primArray(i, j, k, RHO) = bsq / SIGMAMAX;
+        
+                }
+            }
+        }
     }
 }
 
@@ -153,15 +165,18 @@ void init()
     double tfac = 1;
     double rfac, hfac;
     double pfac = 1;
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
-        for (int i = lo.x; i < hi.x; i++) {
-            for (int j = lo.y; j < hi.y; j++) {
-                for (int k = lo.z; k < hi.z; k++) {
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
                     /**************************************************************************************************
                     (1) get the BL, KS and MKS coords at the grid points
                     ***************************************************************************************************/
@@ -472,29 +487,39 @@ void init()
     }
     /*Normalize the density rho*/
     printf("rhomax before normalization: %lf \n", rhomax);
-    for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
-	{
-		const amrex::Box& bx = mfi.validbox();
-		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
-        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-		{
-            primArray(i, j, k, RHO) /= rhomax;
-            primArray(i, j, k, UU) /= rhomax;
-        });
-    }
-    /*Aphi at the corner*/
-    double rho_ave, q, bsq_max;
-    A[N1][N2][N3] = 0.;
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
-        for (int i = lo.x; i < hi.x; i++) {
-            for (int j = lo.y; j < hi.y; j++) {
-                for (int k = lo.z; k < hi.z; k++) {
-                    if(i == 0 || j == 0) continue;
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
+                    primArray(i, j, k, RHO) /= rhomax;
+                    primArray(i, j, k, UU) /= rhomax;
+                }
+            }
+        }
+    }
+    /*Aphi at the corner*/
+    double rho_ave, q, bsq_max;
+    A[N1][N2][N3] = 0.;
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
+    for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
+	{
+		const amrex::Box& bx = mfi.validbox();
+		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
+        const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
                     A[i][j][k] = 0.;
                     r = BL_coord1[i][j][k];
                     if (r >= rin) {
@@ -512,15 +537,18 @@ void init()
     bsq_max = compute_B_from_A(A);
     printf("bsq_max before normalization: %lf \n", bsq_max);
     double pg, pg_max = 0.;
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
-        for (int i = lo.x; i < hi.x; i++) {
-            for (int j = lo.y; j < hi.y; j++) {
-                for (int k = lo.z; k < hi.z; k++) {
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
                     r = BL_coord1[i][j][k];
                     if (r >= rin) {
                         pg = (gam - 1.) * primArray(i, j, k, UU);
@@ -538,15 +566,18 @@ void init()
     printf("target beta: %lf \n", beta);
     norm = sqrt(beta_min / beta);
     printf("normalization factor: %lf \n", norm);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
     for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& primArray = prim[mfi].array();
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
-        for (int i = lo.x; i < hi.x; i++) {
-            for (int j = lo.y; j < hi.y; j++) {
-                for (int k = lo.z; k < hi.z; k++) {
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
                     primArray(i, j, k, B1) *= norm;
                     primArray(i, j, k, B2) *= norm;
                     primArray(i, j, k, B3) *= norm;

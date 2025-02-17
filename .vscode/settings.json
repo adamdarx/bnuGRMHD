@@ -1,6 +1,10 @@
 {
     "cmake.sourceDirectory": "/wsl.localhost/Ubuntu/home/adamdarx/bnuGRMHD",
     "files.associations": {
-        "iostream": "cpp"
+        "iostream": "cpp",
+        "random": "cpp",
+        "*.inc": "cpp",
+        "cmath": "cpp",
+        "complex": "cpp"
     }
 }

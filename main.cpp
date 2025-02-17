@@ -78,7 +78,7 @@ int main(int argc, char* argv[])
 			for (int k = 0; k < N3 + 2 * NG; k++)
 				for (int row = 0; row < 4; row++)
 					for (int col = 0; col < 4; col++)
-						metricFuncField(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
+						metricFuncField[i][j][k].m(row, col) = metricFunc[row][col](X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
 
 	for (int i = 0; i < N1 + 1; i++)
 		for (int j = 0; j < N2 + 1; j++)
@@ -86,38 +86,56 @@ int main(int argc, char* argv[])
 				for (int row = 0; row < 4; row++)
 					for (int col = 0; col < 4; col++)
 					{
-						metricFuncHalfField[0](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
-						metricFuncHalfField[1](i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
-						metricFuncHalfField[2](i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
+						metricFuncHalfField[0][i][j][k].m(row, col) = metricFunc[row][col](X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
+						metricFuncHalfField[1][i][j][k].m(row, col) = metricFunc[row][col](X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
+						metricFuncHalfField[2][i][j][k].m(row, col) = metricFunc[row][col](X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
 					}
 
 	// 利用中心差分计算alpha的导数
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 	for (amrex::MFIter mfi(alphaDiffField); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = alphaDiffField[mfi].array();
-		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-		{
-			a(i, j, k, 0) = 0;
-			a(i, j, k, 1) = (metricFuncField(i + NG + 1, j + NG, k + NG).alpha() - metricFuncField(i + NG - 1, j + NG, k + NG).alpha()) / (2 * dx1);
-			a(i, j, k, 2) = (metricFuncField(i + NG, j + NG + 1, k + NG).alpha() - metricFuncField(i + NG, j + NG - 1, k + NG).alpha()) / (2 * dx2);
-			a(i, j, k, 3) = (metricFuncField(i + NG, j + NG, k + NG + 1).alpha() - metricFuncField(i + NG, j + NG, k + NG - 1).alpha()) / (2 * dx3);
-		});
+		const auto lo = lbound(bx);
+		const auto hi = ubound(bx);
+		for (int i = lo.x; i <= hi.x; i++) {
+			for (int j = lo.y; j <= hi.y; j++) {
+				for (int k = lo.z; k <= hi.z; k++) {
+					a(i, j, k, 0) = 0;
+					a(i, j, k, 1) = (metricFuncField[i + NG + 1][j + NG][k + NG].alpha() - metricFuncField[i + NG - 1][j + NG][k + NG].alpha()) / (2 * dx1);
+					a(i, j, k, 2) = (metricFuncField[i + NG][j + NG + 1][k + NG].alpha() - metricFuncField[i + NG][j + NG - 1][k + NG].alpha()) / (2 * dx2);
+					a(i, j, k, 3) = (metricFuncField[i + NG][j + NG][k + NG + 1].alpha() - metricFuncField[i + NG][j + NG][k + NG - 1].alpha()) / (2 * dx3);
+				}
+			}
+		}
 	}
 
 	for (int comp = 0; comp < 3; comp++)
+	{
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 		for (amrex::MFIter mfi(alphaDiffHalfField[comp]); mfi.isValid(); ++mfi)
 		{
 			const amrex::Box& bx = mfi.validbox();
 			amrex::Array4<amrex::Real> const& a = alphaDiffHalfField[comp][mfi].array();
-			amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-			{
-				a(i, j, k, 0) = 0;
-				a(i, j, k, 1) = (metricFuncField(i + 1, j, k).alpha() - metricFuncField(i, j, k).alpha()) / (dx1);
-				a(i, j, k, 2) = (metricFuncField(i, j + 1, k).alpha() - metricFuncField(i, j, k).alpha()) / (dx2);
-				a(i, j, k, 3) = (metricFuncField(i, j, k + 1).alpha() - metricFuncField(i, j, k).alpha()) / (dx3);
-			});
+			const auto lo = lbound(bx);
+			const auto hi = ubound(bx);
+			for (int i = lo.x; i <= hi.x; i++) {
+				for (int j = lo.y; j <= hi.y; j++) {
+					for (int k = lo.z; k <= hi.z; k++) {
+						a(i, j, k, 0) = 0;
+						a(i, j, k, 1) = (metricFuncField[i + 1][j][k].alpha() - metricFuncField[i][j][k].alpha()) / (dx1);
+						a(i, j, k, 2) = (metricFuncField[i][j + 1][k].alpha() - metricFuncField[i][j][k].alpha()) / (dx2);
+						a(i, j, k, 3) = (metricFuncField[i][j][k + 1].alpha() - metricFuncField[i][j][k].alpha()) / (dx3);
+					}
+				}
+			}
 		}
+	}
 
 	for (int i = 0; i < N1 + 2 * NG; i++)
 		for (int j = 0; j < N2 + 2 * NG; j++)
@@ -125,7 +143,7 @@ int main(int argc, char* argv[])
 				for(int l = 0; l < 4; l++)
 					for (int row = 0; row < 4; row++)
 						for (int col = 0; col < 4; col++)
-							metricDiffField(i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
+							metricDiffField[i][j][k][l].m(row, col) = metricDiff[row][col][l](X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
 
 		for (int i = 0; i < N1; i++)
 			for (int j = 0; j < N2; j++)
@@ -134,21 +152,29 @@ int main(int argc, char* argv[])
 						for (int row = 0; row < 4; row++)
 							for (int col = 0; col < 4; col++)
 							{
-								metricDiffHalfField[0](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
-								metricDiffHalfField[1](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
-								metricDiffHalfField[2](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
+								metricDiffHalfField[0][i][j][k][l].m(row, col) = metricDiff[row][col][l](X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
+								metricDiffHalfField[1][i][j][k][l].m(row, col) = metricDiff[row][col][l](X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
+								metricDiffHalfField[2][i][j][k][l].m(row, col) = metricDiff[row][col][l](X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
 							}
 	init();
 	WriteSingleLevelPlotfile("plt000", prim, {"RHO", "UU", "U0", "U1", "U2", "U3", "B1", "B2", "B3", "BSQ"}, geom, 0., 0);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 	for (amrex::MFIter mfi(ksi); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = ksi[mfi].array();
 		amrex::Array4<amrex::Real const> const& b = prim[mfi].array();
-		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-		{
-			a(i, j, k) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * (1 + pow(b(i, j, k, U1), 2) + pow(b(i, j, k, U2), 2) + pow(b(i, j, k, U3), 2));
-		});
+		const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
+					a(i, j, k) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * (1 + pow(b(i, j, k, U1), 2) + pow(b(i, j, k, U2), 2) + pow(b(i, j, k, U3), 2));
+				}
+			}
+		}
 	}
 
 	for(int epoch = 1; epoch <= epochNum; epoch++)
@@ -175,24 +201,34 @@ int main(int argc, char* argv[])
 		
 		for(int comp = 0; comp < 3; comp++)
 		{
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 			for (amrex::MFIter mfi(fluxLLF[comp]); mfi.isValid(); ++mfi)
 			{
 				const amrex::Box& bx = mfi.validbox();
 				amrex::Array4<amrex::Real> const& a = fluxLLF[comp][mfi].array();
 				amrex::Array4<amrex::Real const> const& b = fluxHLL[comp][mfi].const_array();
 				amrex::Array4<amrex::Real const> const& c = fluxTVDLF[comp][mfi].const_array();
-				amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-				{
-					for(int l = 0; l < 8; l++)
-						a(i,j,k,l) = theta * b(i,j,k,l) + (1 - theta) * c(i,j,k,l);
-				});
+				const auto lo = lbound(bx);
+				const auto hi = ubound(bx);
+				for (int i = lo.x; i <= hi.x; i++) {
+					for (int j = lo.y; j <= hi.y; j++) {
+						for (int k = lo.z; k <= hi.z; k++) {
+							for(int l = 0; l < 8; l++)
+								a(i,j,k,l) = theta * b(i,j,k,l) + (1 - theta) * c(i,j,k,l);
+						}
+					}
+				}
 			}
 		}
 
 		prim2con();
 
 		prim2src();
-
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 		for (amrex::MFIter mfi(c[POS][RIGHT][0]); mfi.isValid(); ++mfi)
 		{
 			const amrex::Box& bx = mfi.validbox();
@@ -214,9 +250,9 @@ int main(int argc, char* argv[])
 
 			const auto lo = lbound(bx);
 			const auto hi = ubound(bx);
-			for (int i = lo.x; i < hi.x; i++) {
-				for (int j = lo.y; j < hi.y; j++) {
-					for (int k = lo.z; k < hi.z; k++) {
+			for (int i = lo.x; i <= hi.x; i++) {
+				for (int j = lo.y; j <= hi.y; j++) {
+					for (int k = lo.z; k <= hi.z; k++) {
 						auto c1max = max(0, cPR0(i, j, k), cPL0(i, j, k));
 						auto c1min = abs(min(-0, cNR0(i, j, k), cNL0(i, j, k)));
 						auto c2max = max(0, cPR1(i, j, k), cPL1(i, j, k));
@@ -232,7 +268,9 @@ int main(int argc, char* argv[])
 			}
 		}
 
-
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 		for (amrex::MFIter mfi(con); mfi.isValid(); ++mfi)
 		{
 			const amrex::Box& bx = mfi.validbox();
@@ -242,14 +280,19 @@ int main(int argc, char* argv[])
 			amrex::Array4<amrex::Real const> const& c1 = fluxLLF[0][mfi].array();
 			amrex::Array4<amrex::Real const> const& c2 = fluxLLF[1][mfi].array();
 			amrex::Array4<amrex::Real const> const& c3 = fluxLLF[2][mfi].array();
-			amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-			{
-				for(int l = 0; l < 8; l++)
-					a(i, j, k, l) += b(i, j, k, l) * Delta_t / 2
-					- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0](i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c1(i + 1, j, k, l) - sqrt(metricFuncHalfField[0](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c1(i, j, k, l))
-					- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1](i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c2(i, j + 1, k, l) - sqrt(metricFuncHalfField[1](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c2(i, j, k, l))
-					- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2](i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c3(i, j, k + 1, l) - sqrt(metricFuncHalfField[2](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c3(i, j, k, l));
-			});
+			const auto lo = lbound(bx);
+			const auto hi = ubound(bx);
+			for (int i = lo.x; i <= hi.x; i++) {
+				for (int j = lo.y; j <= hi.y; j++) {
+					for (int k = lo.z; k <= hi.z; k++) {
+						for(int l = 0; l < 8; l++)
+							a(i, j, k, l) += b(i, j, k, l) * Delta_t / 2
+							- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0][i + 1][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c1(i + 1, j, k, l) - sqrt(metricFuncHalfField[0][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c1(i, j, k, l))
+							- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1][i][j + 1][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c2(i, j + 1, k, l) - sqrt(metricFuncHalfField[1][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c2(i, j, k, l))
+							- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2][i][j][k + 1].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c3(i, j, k + 1, l) - sqrt(metricFuncHalfField[2][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c3(i, j, k, l));
+					}
+				}
+			}
 		}
 
 		con2prim();
@@ -274,28 +317,37 @@ int main(int argc, char* argv[])
 		amrex::MultiFab::Copy(fluxLLF[1], fluxSmoothLLF[1], 0, 0, 8, 0);
 		amrex::MultiFab::Copy(fluxLLF[2], fluxSmoothLLF[2], 0, 0, 8, 0);
 
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 		for (amrex::MFIter mfi(fluxSmoothLLF[0]); mfi.isValid(); ++mfi)
 		{
 			const amrex::Box& bx = mfi.validbox();
-
 			amrex::Array4<amrex::Real> const& a1 = fluxSmoothLLF[0][mfi].array();
 			amrex::Array4<amrex::Real> const& a2 = fluxSmoothLLF[1][mfi].array();
 			amrex::Array4<amrex::Real> const& a3 = fluxSmoothLLF[2][mfi].array();
 			amrex::Array4<amrex::Real const> const& c1 = fluxLLF[0][mfi].array();
 			amrex::Array4<amrex::Real const> const& c2 = fluxLLF[1][mfi].array();
 			amrex::Array4<amrex::Real const> const& c3 = fluxLLF[2][mfi].array();
-			amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-			{
-				a1(i, j, k, 6) = 0.125 * (2 * c1(i, j, k, 6) + c1(i, j + 1, k, 6) + c1(i, j - 1, k, 6) - c2(i, j, k, 5) - c2(i, j + 1, k, 5) - c2(i - 1, j, k, 5) - c2(i - 1, j + 1, k, 5));
-				a2(i, j, k, 5) = 0.125 * (2 * c2(i, j, k, 5) + c2(i + 1, j, k, 5) + c2(i - 1, j, k, 5) - c1(i, j, k, 6) - c1(i + 1, j, k, 6) - c1(i, j - 1, k, 6) - c1(i + 1, j - 1, k, 6));
-				a1(i, j, k, 7) = 0.125 * (2 * c1(i, j, k, 7) + c1(i, j, k + 1, 7) + c1(i, j, k - 1, 7) - c3(i, j, k, 5) - c3(i, j, k + 1, 7) - c3(i - 1, j, k, 5) - c3(i - 1, j, k + 1, 7));
-				a3(i, j, k, 5) = 0.125 * (2 * c3(i, j, k, 5) + c3(i + 1, j, k, 5) + c3(i - 1, j, k, 5) - c1(i, j, k, 7) - c1(i + 1, j, k, 7) - c1(i, j, k - 1, 7) - c1(i + 1, j, k - 1, 7));
-				a2(i, j, k, 7) = 0.125 * (2 * c2(i, j, k, 7) + c2(i, j, k + 1, 7) + c2(i, j, k - 1, 7) - c3(i, j, k, 6) - c3(i, j, k + 1, 7) - c3(i, j - 1, k, 6) - c3(i, j - 1, k + 1, 7));
-				a3(i, j, k, 6) = 0.125 * (2 * c3(i, j, k, 6) + c3(i, j + 1, k, 6) + c3(i, j - 1, k, 6) - c2(i, j, k, 7) - c2(i, j + 1, k, 7) - c2(i, j, k - 1, 7) - c2(i, j + 1, k - 1, 7));
-			});
+			const auto lo = lbound(bx);
+			const auto hi = ubound(bx);
+			for (int i = lo.x; i <= hi.x; i++) {
+				for (int j = lo.y; j <= hi.y; j++) {
+					for (int k = lo.z; k <= hi.z; k++) {
+						a1(i, j, k, 6) = 0.125 * (2 * c1(i, j, k, 6) + c1(i, j + 1, k, 6) + c1(i, j - 1, k, 6) - c2(i, j, k, 5) - c2(i, j + 1, k, 5) - c2(i - 1, j, k, 5) - c2(i - 1, j + 1, k, 5));
+						a2(i, j, k, 5) = 0.125 * (2 * c2(i, j, k, 5) + c2(i + 1, j, k, 5) + c2(i - 1, j, k, 5) - c1(i, j, k, 6) - c1(i + 1, j, k, 6) - c1(i, j - 1, k, 6) - c1(i + 1, j - 1, k, 6));
+						a1(i, j, k, 7) = 0.125 * (2 * c1(i, j, k, 7) + c1(i, j, k + 1, 7) + c1(i, j, k - 1, 7) - c3(i, j, k, 5) - c3(i, j, k + 1, 7) - c3(i - 1, j, k, 5) - c3(i - 1, j, k + 1, 7));
+						a3(i, j, k, 5) = 0.125 * (2 * c3(i, j, k, 5) + c3(i + 1, j, k, 5) + c3(i - 1, j, k, 5) - c1(i, j, k, 7) - c1(i + 1, j, k, 7) - c1(i, j, k - 1, 7) - c1(i + 1, j, k - 1, 7));
+						a2(i, j, k, 7) = 0.125 * (2 * c2(i, j, k, 7) + c2(i, j, k + 1, 7) + c2(i, j, k - 1, 7) - c3(i, j, k, 6) - c3(i, j, k + 1, 7) - c3(i, j - 1, k, 6) - c3(i, j - 1, k + 1, 7));
+						a3(i, j, k, 6) = 0.125 * (2 * c3(i, j, k, 6) + c3(i, j + 1, k, 6) + c3(i, j - 1, k, 6) - c2(i, j, k, 7) - c2(i, j + 1, k, 7) - c2(i, j, k - 1, 7) - c2(i, j + 1, k - 1, 7));
+					}
+				}
+			}
 		}
 
-
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 		for (amrex::MFIter mfi(con); mfi.isValid(); ++mfi)
 		{
 			const amrex::Box& bx = mfi.validbox();
@@ -305,14 +357,19 @@ int main(int argc, char* argv[])
 			amrex::Array4<amrex::Real const> const& c1 = fluxSmoothLLF[0][mfi].array();
 			amrex::Array4<amrex::Real const> const& c2 = fluxSmoothLLF[1][mfi].array();
 			amrex::Array4<amrex::Real const> const& c3 = fluxSmoothLLF[2][mfi].array();
-			amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-			{
-				for(int l = 0; l < 8; l++)
-					a(i, j, k, l) += b(i, j, k, l) * Delta_t / 2
-					- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0](i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c1(i + 1, j, k, l) - sqrt(metricFuncHalfField[0](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c1(i, j, k, l))
-					- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1](i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c2(i, j + 1, k, l) - sqrt(metricFuncHalfField[1](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c2(i, j, k, l))
-					- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2](i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c3(i, j, k + 1, l) - sqrt(metricFuncHalfField[2](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * c3(i, j, k, l));
-			});
+			const auto lo = lbound(bx);
+			const auto hi = ubound(bx);
+			for (int i = lo.x; i <= hi.x; i++) {
+				for (int j = lo.y; j <= hi.y; j++) {
+					for (int k = lo.z; k <= hi.z; k++) {
+						for(int l = 0; l < 8; l++)
+							a(i, j, k, l) += b(i, j, k, l) * Delta_t / 2
+							- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0][i + 1][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c1(i + 1, j, k, l) - sqrt(metricFuncHalfField[0][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c1(i, j, k, l))
+							- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1][i][j + 1][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c2(i, j + 1, k, l) - sqrt(metricFuncHalfField[1][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c2(i, j, k, l))
+							- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2][i][j][k + 1].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c3(i, j, k + 1, l) - sqrt(metricFuncHalfField[2][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * c3(i, j, k, l));
+					}
+				}
+			}
 		}
 
 		con2prim();
@@ -321,12 +378,12 @@ int main(int argc, char* argv[])
 		
 		totalTime += clock() - start;
 		totalPhysicalTime += Delta_t;
-		if(epoch)
+		amrex::Print() << "Epoch: " << epoch << "\tTime(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
+		if(epoch % 100 == 0)
 		{
-			std::cout << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
 			char filename[16];
-			sprintf(filename, "plt%0.3d", epoch);
-			WriteSingleLevelPlotfile(filename, prim, {"RHO", "UU", "U0", "U1", "U2", "U3", "B1", "B2", "B3", "BSQ"}, geom, totalPhysicalTime, epoch);
+			sprintf(filename, "plt%0.3d", epoch / 100);
+			WriteSingleLevelPlotfile(filename, prim, {"RHO", "UU", "U0", "U1", "U2", "U3", "B1", "B2", "B3", "BSQ"}, geom, totalPhysicalTime, epoch / 100);
 		}
 	}
 	amrex::Finalize();

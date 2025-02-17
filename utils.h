@@ -9,14 +9,13 @@
 #include <unsupported/Eigen/CXX11/Tensor>
 #include "Metric.h"
 
-const MetricComponent ZERO_COMPONENT = [](double x, double y, double z) { return 0; };
 constexpr auto a = (0.9375);
 constexpr auto h = (0.);
 constexpr auto SMALL = (1.e-20);
 constexpr auto theta = 0.;
 constexpr auto NDIM = (4);
-constexpr auto N1 = (16);
-constexpr auto N2 = (16);
+constexpr auto N1 = (128);
+constexpr auto N2 = (64);
 constexpr auto N3 = (4);
 constexpr auto NG = (2);
 constexpr auto max_grid_size = (16);
@@ -28,7 +27,7 @@ constexpr double X2max = (PI - SMALL);
 constexpr double X3min = (SMALL);
 constexpr double X3max = (2. * PI - SMALL);
 constexpr auto R0 = (0.);
-constexpr auto cour = 0.8;
+constexpr auto cour = 0.9;
 constexpr auto LEFT = 0;
 constexpr auto RIGHT = 1;
 constexpr auto NEG = 0;
@@ -98,20 +97,14 @@ constexpr auto UUMIN = (1.e-8);
 constexpr auto SIGMAMAX = (50.);
 
 // metric
-Eigen::Tensor<MetricComponent, 2> metricFunc(4, 4);												
-Eigen::Tensor<MetricComponent, 3> metricDiff(4, 4, 4);			
+MetricComponent metricFunc[NDIM][NDIM];
+MetricComponent metricDiff[NDIM][NDIM][NDIM];
 
-Eigen::Tensor<Metric, 3> metricFuncField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG);	
-Eigen::Tensor<Metric, 3> metricFuncHalfField1(N1 + 1, N2 + 1, N3 + 1);
-Eigen::Tensor<Metric, 3> metricFuncHalfField2(N1 + 1, N2 + 1, N3 + 1);
-Eigen::Tensor<Metric, 3> metricFuncHalfField3(N1 + 1, N2 + 1, N3 + 1);
-Eigen::Tensor<Metric, 3> metricFuncHalfField[3] = { metricFuncHalfField1, metricFuncHalfField2, metricFuncHalfField3 };
+Metric metricFuncField[N1 + 2 * NG][N2 + 2 * NG][N3 + 2 * NG];
+Metric metricFuncHalfField[3][N1 + 1][N2 + 1][N3 + 1];
 
-Eigen::Tensor<Metric, 4> metricDiffField(N1 + 2 * NG, N2 + 2 * NG, N3 + 2 * NG, 4);
-Eigen::Tensor<Metric, 4> metricDiffHalfField1(N1 + 1, N2 + 1, N3 + 1, 4);
-Eigen::Tensor<Metric, 4> metricDiffHalfField2(N1 + 1, N2 + 1, N3 + 1, 4);
-Eigen::Tensor<Metric, 4> metricDiffHalfField3(N1 + 1, N2 + 1, N3 + 1, 4);
-Eigen::Tensor<Metric, 4> metricDiffHalfField[3] = { metricDiffHalfField1, metricDiffHalfField2, metricDiffHalfField3 };
+Metric metricDiffField[N1 + 2 * NG][N2 + 2 * NG][N3 + 2 * NG][4];
+Metric metricDiffHalfField[3][N1 + 1][N2 + 1][N3 + 1][4];
 
 amrex::MultiFab alphaDiffField;
 amrex::MultiFab alphaDiffHalfField[3];
@@ -148,11 +141,19 @@ inline double MC(double x, double y, double z)
 		return 0;
 }
 
-double dot(int i, int j, int k, Eigen::Vector3d vecA, Eigen::Vector3d vecB, Eigen::Tensor<Metric, 3> metric) {
-	return double(vecA.transpose() * metric(i, j, k).gamma() * vecB);
+double dot(int i, int j, int k, Eigen::Vector3d vecA, Eigen::Vector3d vecB, Metric metric[N1 + 1][N2 + 1][N3 + 1]) {
+	return double(vecA.transpose() * metric[i][j][k].gamma() * vecB);
 }
 
-double square(int i, int j, int k, Eigen::Vector3d vec, Eigen::Tensor<Metric, 3> metric) {
+double dot(int i, int j, int k, Eigen::Vector3d vecA, Eigen::Vector3d vecB, Metric metric[N1 + 2 * NG][N2 + 2 * NG][N3 + 2 * NG]) {
+	return double(vecA.transpose() * metric[i][j][k].gamma() * vecB);
+}
+
+double square(int i, int j, int k, Eigen::Vector3d vec, Metric metric[N1 + 1][N2 + 1][N3 + 1]) {
+	return dot(i, j, k, vec, vec, metric);
+}
+
+double square(int i, int j, int k, Eigen::Vector3d vec, Metric metric[N1 + 2 * NG][N2 + 2 * NG][N3 + 2 * NG]) {
 	return dot(i, j, k, vec, vec, metric);
 }
 
@@ -165,17 +166,28 @@ double contract(Eigen::Matrix3d A, Eigen::Matrix3d B) {
 }
 
 void ghostify() {
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 	for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = primGhost[mfi].array();
 		amrex::Array4<amrex::Real> const& b = prim[mfi].array();
-		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-		{
-			for(int l = 0; l < NPRIM; l++)
-				a(i + NG, j + NG, k + NG, l) = b(i, j, k, l);
-		});
+		const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+		for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
+					for(int l = 0; l < NPRIM; l++)
+						a(i + NG, j + NG, k + NG, l) = b(i, j, k, l);
+				}
+			}
+		}
 	}
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 	for (amrex::MFIter mfi(primLR[LEFT][0]); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
@@ -186,9 +198,9 @@ void ghostify() {
 			{
 				for (int k = NG; k < N3 + NG; k++)
 				{
-					a(i, j, k, RHO) = a(i + 1, j + 1, k + 1, RHO) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-					a(i, j, k, UU) = a(i + 1, j + 1, k + 1, UU) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-					a(i, j, k, B1) = a(i + 1, j + 1, k + 1, B1) * sqrt(-metricFuncField(i + 1, j + 1, k + 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
+					a(i, j, k, RHO) = a(i + 1, j + 1, k + 1, RHO) * sqrt(-metricFuncField[i + 1][j + 1][k + 1].m.determinant()) / sqrt(-metricFuncField[i][j][k].m.determinant());
+					a(i, j, k, UU) = a(i + 1, j + 1, k + 1, UU) * sqrt(-metricFuncField[i + 1][j + 1][k + 1].m.determinant()) / sqrt(-metricFuncField[i][j][k].m.determinant());
+					a(i, j, k, B1) = a(i + 1, j + 1, k + 1, B1) * sqrt(-metricFuncField[i + 1][j + 1][k + 1].m.determinant()) / sqrt(-metricFuncField[i][j][k].m.determinant());
 
 					a(i, j, k, U2) = a(i + 1, j + 1, k + 1, U2) * (1 - dx1);
 					a(i, j, k, U3) = a(i + 1, j + 1, k + 1, U3) * (1 - dx1);
@@ -207,9 +219,9 @@ void ghostify() {
 			{
 				for (int k = NG; k < N3 + NG; k++)
 				{
-					a(i, j, k, RHO) = a(i - 1, j - 1, k - 1, RHO) * sqrt(-metricFuncField(i - 1, j - 1, k - 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-					a(i, j, k, UU) = a(i - 1, j - 1, k - 1, UU) * sqrt(-metricFuncField(i - 1, j - 1, k - 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
-					a(i, j, k, B1) = a(i - 1, j - 1, k - 1, B1) * sqrt(-metricFuncField(i - 1, j - 1, k - 1).m.determinant()) / sqrt(-metricFuncField(i, j, k).m.determinant());
+					a(i, j, k, RHO) = a(i - 1, j - 1, k - 1, RHO) * sqrt(-metricFuncField[i - 1][j - 1][k - 1].m.determinant()) / sqrt(-metricFuncField[i][j][k].m.determinant());
+					a(i, j, k, UU) = a(i - 1, j - 1, k - 1, UU) * sqrt(-metricFuncField[i - 1][j - 1][k - 1].m.determinant()) / sqrt(-metricFuncField[i][j][k].m.determinant());
+					a(i, j, k, B1) = a(i - 1, j - 1, k - 1, B1) * sqrt(-metricFuncField[i - 1][j - 1][k - 1].m.determinant()) / sqrt(-metricFuncField[i][j][k].m.determinant());
 
 					a(i, j, k, U2) = a(i - 1, j - 1, k - 1, U2) * (1 - dx1);
 					a(i, j, k, U3) = a(i - 1, j - 1, k - 1, U3) * (1 - dx1);
@@ -284,6 +296,9 @@ void ghostify() {
 }
 
 void interpolate() {
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 	for (amrex::MFIter mfi(primLR[LEFT][0]); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
@@ -294,32 +309,37 @@ void interpolate() {
 		amrex::Array4<amrex::Real> const& aR1 = primLR[RIGHT][1][mfi].array();
 		amrex::Array4<amrex::Real> const& aR2 = primLR[RIGHT][2][mfi].array();
 		amrex::Array4<amrex::Real> const& b = primGhost[mfi].array();
-		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-		{
-			for(int l = 0; l < NPRIM; l++)
-			{
-				aL0(i, j, k, l)  = b(i + NG, j + NG, k + NG, l)  - MC((b(i + NG + 1, j + NG, k + NG, l) - b(i + NG - 1, j + NG, k + NG, l)) / (2 * dx1),
-					2 * (b(i + NG + 1, j + NG, k + NG, l) - b(i + NG, j + NG, k + NG, l) ) / (dx1),
-					2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG - 1, j + NG, k + NG, l)) / (dx1)) * dx1 / 2;
-				aR0(i, j, k, l)  = b(i + NG - 1, j + NG, k + NG, l) + MC((b(i + NG, j + NG, k + NG, l)  - b(i, j + NG, k + NG, l)) / (2 * dx1),
-					2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG - 1, j + NG, k + NG, l)) / (dx1),
-					2 * (b(i + NG - 1, j + NG, k + NG, l) - b(i, j + NG, k + NG, l)) / (dx1)) * dx1 / 2;
+		const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+		for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
+					for(int l = 0; l < NPRIM; l++)
+					{
+						aL0(i, j, k, l)  = b(i + NG, j + NG, k + NG, l)  - MC((b(i + NG + 1, j + NG, k + NG, l) - b(i + NG - 1, j + NG, k + NG, l)) / (2 * dx1),
+							2 * (b(i + NG + 1, j + NG, k + NG, l) - b(i + NG, j + NG, k + NG, l) ) / (dx1),
+							2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG - 1, j + NG, k + NG, l)) / (dx1)) * dx1 / 2;
+						aR0(i, j, k, l)  = b(i + NG - 1, j + NG, k + NG, l) + MC((b(i + NG, j + NG, k + NG, l)  - b(i, j + NG, k + NG, l)) / (2 * dx1),
+							2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG - 1, j + NG, k + NG, l)) / (dx1),
+							2 * (b(i + NG - 1, j + NG, k + NG, l) - b(i, j + NG, k + NG, l)) / (dx1)) * dx1 / 2;
 
-				aL1(i, j, k, l)  = b(i + NG, j + NG + 1, k + NG, l) - MC((b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG - 1, k + NG, l)) / (2 * dx2),
-					2 * (b(i + NG, j + NG + 1, k + NG, l) - b(i + NG, j + NG, k + NG, l) ) / (dx2),
-					2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG - 1, k + NG, l)) / (dx2)) * dx2 / 2;
-				aR1(i, j, k, l)  = b(i + NG, j + NG, k + NG, l)  + MC((b(i + NG, j + NG + 1, k + NG, l) - b(i + NG, j, k + NG, l)) / (2 * dx2),
-					2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG - 1, k + NG, l)) / (dx2),
-					2 * (b(i + NG, j + NG - 1, k + NG, l) - b(i + NG, j, k + NG, l)) / (dx2)) * dx2 / 2;
+						aL1(i, j, k, l)  = b(i + NG, j + NG + 1, k + NG, l) - MC((b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG - 1, k + NG, l)) / (2 * dx2),
+							2 * (b(i + NG, j + NG + 1, k + NG, l) - b(i + NG, j + NG, k + NG, l) ) / (dx2),
+							2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG - 1, k + NG, l)) / (dx2)) * dx2 / 2;
+						aR1(i, j, k, l)  = b(i + NG, j + NG, k + NG, l)  + MC((b(i + NG, j + NG + 1, k + NG, l) - b(i + NG, j, k + NG, l)) / (2 * dx2),
+							2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG - 1, k + NG, l)) / (dx2),
+							2 * (b(i + NG, j + NG - 1, k + NG, l) - b(i + NG, j, k + NG, l)) / (dx2)) * dx2 / 2;
 
-				aL2(i, j, k, l)  = b(i + NG, j + NG, k + NG, l)  - MC((b(i + NG, j + NG, k + NG + 1, l) - b(i + NG, j + NG, k + NG - 1, l)) / (2 * dx3),
-					2 * (b(i + NG, j + NG, k + NG + 1, l) - b(i + NG, j + NG, k + NG, l) ) / (dx3),
-					2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG, k + NG - 1, l)) / (dx3)) * dx3 / 2;
-				aR2(i, j, k, l)  = b(i + NG, j + NG, k + NG - 1, l) + MC((b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG, k, l)) / (2 * dx3),
-					2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG, k + NG - 1, l)) / (dx3),
-					2 * (b(i + NG, j + NG, k + NG - 1, l) - b(i + NG, j + NG, k, l)) / (dx3)) * dx3 / 2;
+						aL2(i, j, k, l)  = b(i + NG, j + NG, k + NG, l)  - MC((b(i + NG, j + NG, k + NG + 1, l) - b(i + NG, j + NG, k + NG - 1, l)) / (2 * dx3),
+							2 * (b(i + NG, j + NG, k + NG + 1, l) - b(i + NG, j + NG, k + NG, l) ) / (dx3),
+							2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG, k + NG - 1, l)) / (dx3)) * dx3 / 2;
+						aR2(i, j, k, l)  = b(i + NG, j + NG, k + NG - 1, l) + MC((b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG, k, l)) / (2 * dx3),
+							2 * (b(i + NG, j + NG, k + NG, l)  - b(i + NG, j + NG, k + NG - 1, l)) / (dx3),
+							2 * (b(i + NG, j + NG, k + NG - 1, l) - b(i + NG, j + NG, k, l)) / (dx3)) * dx3 / 2;
+					}
+				}
 			}
-		});
+		}
 	}
 }
 
@@ -328,29 +348,37 @@ void primLR2conLR() {
 	{
 		for (int comp = 0; comp < 3; comp++)
 		{
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 			for (amrex::MFIter mfi(conLR[LR][comp]); mfi.isValid(); ++mfi)
 			{
 				const amrex::Box& bx = mfi.validbox();
 				amrex::Array4<amrex::Real> const& a = conLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& b = primLR[LR][comp][mfi].array();
-				amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-				{
-					Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
-					Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
-					auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
-					auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
-					double Gamma = sqrt(1 + usq);
-					auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
-					auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
-					a(i, j, k, 0) = Gamma * b(i, j, k, RHO);
-					a(i, j, k, 1) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) - b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2)) - Gamma * b(i, j, k, RHO);
-					a(i, j, k, 2) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U1) + Bsq * b(i, j, k, U1) - Bv * b(i, j, k, B1);
-					a(i, j, k, 3) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U2) + Bsq * b(i, j, k, U2) - Bv * b(i, j, k, B2);
-					a(i, j, k, 4) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U3) + Bsq * b(i, j, k, U3) - Bv * b(i, j, k, B3);
-					a(i, j, k, 5) = b(i, j, k, B1);
-					a(i, j, k, 6) = b(i, j, k, B2);
-					a(i, j, k, 7) = b(i, j, k, B3);
-				});
+				const auto lo = lbound(bx);
+        		const auto hi = ubound(bx);
+				for (int i = lo.x; i <= hi.x; i++) {
+					for (int j = lo.y; j <= hi.y; j++) {
+						for (int k = lo.z; k <= hi.z; k++) {
+							Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
+							Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
+							auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
+							auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
+							double Gamma = sqrt(1 + usq);
+							auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
+							auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
+							a(i, j, k, 0) = Gamma * b(i, j, k, RHO);
+							a(i, j, k, 1) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) - b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2)) - Gamma * b(i, j, k, RHO);
+							a(i, j, k, 2) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U1) + Bsq * b(i, j, k, U1) - Bv * b(i, j, k, B1);
+							a(i, j, k, 3) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U2) + Bsq * b(i, j, k, U2) - Bv * b(i, j, k, B2);
+							a(i, j, k, 4) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U3) + Bsq * b(i, j, k, U3) - Bv * b(i, j, k, B3);
+							a(i, j, k, 5) = b(i, j, k, B1);
+							a(i, j, k, 6) = b(i, j, k, B2);
+							a(i, j, k, 7) = b(i, j, k, B3);
+						}
+					}
+				}
 			}
 		}
 	}
@@ -361,6 +389,9 @@ void primLR2srcLR() {
 	{
 		for (int comp = 0; comp < 3; comp++)
 		{
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 			for (amrex::MFIter mfi(srcLR[LR][comp]); mfi.isValid(); ++mfi)
 			{
 				const amrex::Box& bx = mfi.validbox();
@@ -368,36 +399,41 @@ void primLR2srcLR() {
 				amrex::Array4<amrex::Real> const& b = primLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& c = conLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& d = alphaDiffHalfField[comp][mfi].array();
-				amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-				{
-					Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
-					Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
-					Eigen::Vector3d S{ c(i, j, k, 2) ,c(i, j, k, 3) ,c(i, j, k, 4) };
-					auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
-					auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
-					double Gamma = sqrt(1 + usq);
-					auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
-					auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
-					auto metric = metricFuncHalfField[comp](i, j, k);
-					auto metricDiff = metricDiffHalfField[comp];
-					auto Sb = dot(i, j, k, S, metricDiff(i, j, k, 1).betaVec(), metricFuncHalfField[comp]);
-					// W^{ij}
-					Eigen::Matrix3d W = S * (u / Gamma).transpose() + (b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2))) * metric.gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - Bv * u / Gamma * B.transpose();
-					Eigen::Matrix3d betaDiff;
-					betaDiff << metricDiff(i, j, k, 1).betaVec()(0), metricDiff(i, j, k, 2).betaVec()(0), metricDiff(i, j, k, 3).betaVec()(0),
-						metricDiff(i, j, k, 1).betaVec()(1), metricDiff(i, j, k, 2).betaVec()(1), metricDiff(i, j, k, 3).betaVec()(1),
-						metricDiff(i, j, k, 1).betaVec()(2), metricDiff(i, j, k, 2).betaVec()(2), metricDiff(i, j, k, 3).betaVec()(2);
-					a(i, j, k, 0) = 0;
-					a(i, j, k, 1) = 0.5 * contract(W, (metric.betaVec()(0) * metricDiff(i, j, k, 1).gamma() + metric.betaVec()(1) * metricDiff(i, j, k, 2).gamma() + metric.betaVec()(2) * metricDiff(i, j, k, 3).gamma()))
-						+ contract(W * metric.gamma(), betaDiff)
-						- (metric.gamma().inverse() * S)(0) * d(i, j, k, 1) - (metric.gamma().inverse() * S)(1) * d(i, j, k, 2) - (metric.gamma().inverse() * S)(2) * d(i, j, k, 3);
-					a(i, j, k, 2) = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 1).gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 1);
-					a(i, j, k, 3) = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 2).gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 2);
-					a(i, j, k, 4) = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 3).gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 3);
-					a(i, j, k, 5) = 0;
-					a(i, j, k, 6) = 0;
-					a(i, j, k, 7) = 0;
-				});
+				const auto lo = lbound(bx);
+        		const auto hi = ubound(bx);
+				for (int i = lo.x; i <= hi.x; i++) {
+					for (int j = lo.y; j <= hi.y; j++) {
+						for (int k = lo.z; k <= hi.z; k++) {
+							Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
+							Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
+							Eigen::Vector3d S{ c(i, j, k, 2) ,c(i, j, k, 3) ,c(i, j, k, 4) };
+							auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
+							auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
+							double Gamma = sqrt(1 + usq);
+							auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
+							auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
+							auto metric = metricFuncHalfField[comp][i][j][k];
+							auto metricDiff = metricDiffHalfField[comp];
+							auto Sb = dot(i, j, k, S, metricDiff[i][j][k][1].betaVec(), metricFuncHalfField[comp]);
+							// W^{ij}
+							Eigen::Matrix3d W = S * (u / Gamma).transpose() + (b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2))) * metric.gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - Bv * u / Gamma * B.transpose();
+							Eigen::Matrix3d betaDiff;
+							betaDiff << metricDiff[i][j][k][1].betaVec()(0), metricDiff[i][j][k][2].betaVec()(0), metricDiff[i][j][k][3].betaVec()(0),
+								metricDiff[i][j][k][1].betaVec()(1), metricDiff[i][j][k][2].betaVec()(1), metricDiff[i][j][k][3].betaVec()(1),
+								metricDiff[i][j][k][1].betaVec()(2), metricDiff[i][j][k][2].betaVec()(2), metricDiff[i][j][k][3].betaVec()(2);
+							a(i, j, k, 0) = 0;
+							a(i, j, k, 1) = 0.5 * contract(W, (metric.betaVec()(0) * metricDiff[i][j][k][1].gamma() + metric.betaVec()(1) * metricDiff[i][j][k][2].gamma() + metric.betaVec()(2) * metricDiff[i][j][k][3].gamma()))
+								+ contract(W * metric.gamma(), betaDiff)
+								- (metric.gamma().inverse() * S)(0) * d(i, j, k, 1) - (metric.gamma().inverse() * S)(1) * d(i, j, k, 2) - (metric.gamma().inverse() * S)(2) * d(i, j, k, 3);
+							a(i, j, k, 2) = 0.5 * metric.alpha() * contract(W, metricDiff[i][j][k][1].gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 1);
+							a(i, j, k, 3) = 0.5 * metric.alpha() * contract(W, metricDiff[i][j][k][2].gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 2);
+							a(i, j, k, 4) = 0.5 * metric.alpha() * contract(W, metricDiff[i][j][k][3].gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 3);
+							a(i, j, k, 5) = 0;
+							a(i, j, k, 6) = 0;
+							a(i, j, k, 7) = 0;
+						}
+					}
+				}
 			}
 		}
 	}
@@ -406,78 +442,102 @@ void primLR2srcLR() {
 void primLR2fluxLR() {
 	for (int LR = 0; LR < 2; LR++)
 		for (int comp = 0; comp < 3; comp++)
+		{
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 			for (amrex::MFIter mfi(fluxLR[LR][comp]); mfi.isValid(); ++mfi)
 			{
 				const amrex::Box& bx = mfi.validbox();
 				amrex::Array4<amrex::Real> const& a = fluxLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& b = primLR[LR][comp][mfi].array();
 				amrex::Array4<amrex::Real> const& c = conLR[LR][comp][mfi].array();
-				amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-				{
-					Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
-					Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
-					Eigen::Vector3d S{ c(i, j, k, 2) ,c(i, j, k, 3) ,c(i, j, k, 4) };
-					auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
-					auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
-					double Gamma = sqrt(1 + usq);
-					auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
-					auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
-					auto metric = metricFuncHalfField[comp](i, j, k);
-					auto V = metric.alpha() * u / Gamma - metric.betaVec();
-					// W^{ij}
-					Eigen::Matrix3d W = S * (u / Gamma).transpose() + (b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2))) * metric.gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - Bv * u / Gamma * B.transpose();
-					a(i, j, k, 0) = V(comp) * c(i, j, k, 0);
-					a(i, j, k, 1) = metric.alpha() * (c(i, j, k, 2 + comp) - u(comp) / Gamma * c(i, j, k, 0)) - metric.betaVec()(comp) * c(i, j, k, 1);
-					a(i, j, k, 2) = (metric.alpha() * W * metric.gamma())(comp, 0) - metric.betaVec()(comp) * c(i, j, k, 2);
-					a(i, j, k, 3) = (metric.alpha() * W * metric.gamma())(comp, 1) - metric.betaVec()(comp) * c(i, j, k, 3);
-					a(i, j, k, 4) = (metric.alpha() * W * metric.gamma())(comp, 2) - metric.betaVec()(comp) * c(i, j, k, 4);
-					a(i, j, k, 5) = V(comp) * c(i, j, k, 5) - V(0) * c(i, j, k, 5 + comp);
-					a(i, j, k, 6) = V(comp) * c(i, j, k, 6) - V(1) * c(i, j, k, 5 + comp);
-					a(i, j, k, 7) = V(comp) * c(i, j, k, 7) - V(2) * c(i, j, k, 5 + comp);
-				});
+				const auto lo = lbound(bx);
+        		const auto hi = ubound(bx);
+				for (int i = lo.x; i <= hi.x; i++) {
+					for (int j = lo.y; j <= hi.y; j++) {
+						for (int k = lo.z; k <= hi.z; k++) {
+							Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
+							Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
+							Eigen::Vector3d S{ c(i, j, k, 2) ,c(i, j, k, 3) ,c(i, j, k, 4) };
+							auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
+							auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
+							double Gamma = sqrt(1 + usq);
+							auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
+							auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
+							auto metric = metricFuncHalfField[comp][i][j][k];
+							auto V = metric.alpha() * u / Gamma - metric.betaVec();
+							// W^{ij}
+							Eigen::Matrix3d W = S * (u / Gamma).transpose() + (b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2))) * metric.gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - Bv * u / Gamma * B.transpose();
+							a(i, j, k, 0) = V(comp) * c(i, j, k, 0);
+							a(i, j, k, 1) = metric.alpha() * (c(i, j, k, 2 + comp) - u(comp) / Gamma * c(i, j, k, 0)) - metric.betaVec()(comp) * c(i, j, k, 1);
+							a(i, j, k, 2) = (metric.alpha() * W * metric.gamma())(comp, 0) - metric.betaVec()(comp) * c(i, j, k, 2);
+							a(i, j, k, 3) = (metric.alpha() * W * metric.gamma())(comp, 1) - metric.betaVec()(comp) * c(i, j, k, 3);
+							a(i, j, k, 4) = (metric.alpha() * W * metric.gamma())(comp, 2) - metric.betaVec()(comp) * c(i, j, k, 4);
+							a(i, j, k, 5) = V(comp) * c(i, j, k, 5) - V(0) * c(i, j, k, 5 + comp);
+							a(i, j, k, 6) = V(comp) * c(i, j, k, 6) - V(1) * c(i, j, k, 5 + comp);
+							a(i, j, k, 7) = V(comp) * c(i, j, k, 7) - V(2) * c(i, j, k, 5 + comp);
+						}
+					}
+				}
 			}
+		}
 }
 
 void primLR2cLR() {
 	for (int PN = 0; PN < 2; PN++)
 		for (int LR = 0; LR < 2; LR++)
 			for (int comp = 0; comp < 3; comp++)
+			{
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 				for (amrex::MFIter mfi(c[PN][LR][comp]); mfi.isValid(); ++mfi)
 				{
 					const amrex::Box& bx = mfi.validbox();
 					amrex::Array4<amrex::Real> const& a = c[PN][LR][comp][mfi].array();
 					amrex::Array4<amrex::Real> const& b = primLR[LR][comp][mfi].array();
-					amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-					{
-						if(b(i,j,k,RHO))
-						{
-							Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
-							Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
-							auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
-							auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
-							double Gamma = sqrt(1 + usq);
-							auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
-							auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
-							auto metric = metricFuncHalfField[comp](i, j, k);
-							auto u0 = Gamma / metric.alpha();
-							Eigen::Vector3d ui = { Gamma * (b(i, j, k, U1) - metric.betaVec()(0)),
-											Gamma * (b(i, j, k, U2) - metric.betaVec()(1)),
-											Gamma * (b(i, j, k, U3) - metric.betaVec()(2)) };
-							auto cs_square = gam * b(i, j, k, UU) / (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU));
-							auto cA_square = (Bsq * (1 - vsq) + pow(Bv, 2)) / (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU) + Bsq * (1 - vsq) + pow(Bv, 2));
-							auto vf_square = cA_square + cs_square - cA_square * cs_square;
-							auto metricInv = metric.m.inverse();
-							a(i, j, k) = (pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0) + (2 * PN - 1) * sqrt(
-								pow((pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0), 2)
-								- (vf_square * metricInv(comp, comp) - (1 - vf_square) * ui(comp) * ui(comp)) / (vf_square * metricInv(0, 0) - (1 - vf_square) * u0 * u0)
-							);
+					const auto lo = lbound(bx);
+        			const auto hi = ubound(bx);
+					for (int i = lo.x; i <= hi.x; i++) {
+						for (int j = lo.y; j <= hi.y; j++) {
+							for (int k = lo.z; k <= hi.z; k++) {
+								if(b(i,j,k,RHO))
+								{
+									Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
+									Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
+									auto usq = square(i, j, k, u, metricFuncHalfField[comp]);
+									auto Bsq = square(i, j, k, B, metricFuncHalfField[comp]);
+									double Gamma = sqrt(1 + usq);
+									auto vsq = square(i, j, k, u / Gamma, metricFuncHalfField[comp]);
+									auto Bv = dot(i, j, k, u / Gamma, B, metricFuncHalfField[comp]);
+									auto metric = metricFuncHalfField[comp][i][j][k];
+									auto u0 = Gamma / metric.alpha();
+									Eigen::Vector3d ui{ Gamma * (b(i, j, k, U1) - metric.betaVec()(0)),
+													Gamma * (b(i, j, k, U2) - metric.betaVec()(1)),
+													Gamma * (b(i, j, k, U3) - metric.betaVec()(2)) };
+									auto cs_square = gam * b(i, j, k, UU) / (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU));
+									auto cA_square = (Bsq * (1 - vsq) + pow(Bv, 2)) / (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU) + Bsq * (1 - vsq) + pow(Bv, 2));
+									auto vf_square = cA_square + cs_square - cA_square * cs_square;
+									auto metricInv = metric.m.inverse();
+									a(i, j, k) = (pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0) + (2 * PN - 1) * sqrt(
+										pow((pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0), 2)
+										- (vf_square * metricInv(comp, comp) - (1 - vf_square) * ui(comp) * ui(comp)) / (vf_square * metricInv(0, 0) - (1 - vf_square) * u0 * u0)
+									);
+								}
+							}
 						}
-					});
+					}
 				}
+			}
 }
 
 void calFluxHHL() {
 	for (int comp = 0; comp < 3; comp++)
+	{
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 		for (amrex::MFIter mfi(fluxHLL[comp]); mfi.isValid(); ++mfi)
 		{
 			const amrex::Box& bx = mfi.validbox();
@@ -488,18 +548,28 @@ void calFluxHHL() {
 			amrex::Array4<amrex::Real> const& bNL = c[NEG][LEFT][comp][mfi].array();
 			amrex::Array4<amrex::Real> const& cL = fluxLR[LEFT][comp][mfi].array();
 			amrex::Array4<amrex::Real> const& cR = fluxLR[RIGHT][comp][mfi].array();
-			amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-			{
-				auto c_max = max(0, bPR(i, j, k), bPL(i, j, k));
-				auto c_min = -min(0, bNR(i, j, k), bNL(i, j, k));
-				for(int l = 0; l < 8; l++)
-					a(i, j, k, l) = c_max + c_min ? (c_min * cR(i, j, k, l) + c_max * cL(i, j, k, l) - c_max * c_min * (cR(i, j, k, l) - cL(i, j, k, l))) / (c_max + c_min) : 0;
-			});
+			const auto lo = lbound(bx);
+        	const auto hi = ubound(bx);
+			for (int i = lo.x; i <= hi.x; i++) {
+				for (int j = lo.y; j <= hi.y; j++) {
+					for (int k = lo.z; k <= hi.z; k++) {
+						auto c_max = max(0, bPR(i, j, k), bPL(i, j, k));
+						auto c_min = -min(0, bNR(i, j, k), bNL(i, j, k));
+						for(int l = 0; l < 8; l++)
+							a(i, j, k, l) = c_max + c_min ? (c_min * cR(i, j, k, l) + c_max * cL(i, j, k, l) - c_max * c_min * (cR(i, j, k, l) - cL(i, j, k, l))) / (c_max + c_min) : 0;
+					}
+				}
+			}
 		}
+	}
 }
 
 void calFluxTVDLF() {
 	for (int comp = 0; comp < 3; comp++)
+	{
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 		for (amrex::MFIter mfi(fluxTVDLF[comp]); mfi.isValid(); ++mfi)
 		{
 			const amrex::Box& bx = mfi.validbox();
@@ -512,46 +582,63 @@ void calFluxTVDLF() {
 			amrex::Array4<amrex::Real> const& cR = fluxLR[RIGHT][comp][mfi].array();
 			amrex::Array4<amrex::Real> const& dL = conLR[LEFT][comp][mfi].array();
 			amrex::Array4<amrex::Real> const& dR = conLR[RIGHT][comp][mfi].array();
-			amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-			{
-				auto c_max = max(0, bPR(i, j, k), bPL(i, j, k));
-				auto c_min = -min(0, bNR(i, j, k), bNL(i, j, k));
-				auto c = max(c_max, c_min);
-				for(int l = 0; l < 8; l++)
-					a(i, j, k, l) = 0.5 * (cR(i, j, k, l) + cL(i, j, k, l)) - 0.5 * c * (dR(i, j, k, l) - dL(i, j, k, l));
-			});
+			const auto lo = lbound(bx);
+        	const auto hi = ubound(bx);
+			for (int i = lo.x; i <= hi.x; i++) {
+				for (int j = lo.y; j <= hi.y; j++) {
+					for (int k = lo.z; k <= hi.z; k++) {
+						auto c_max = max(0, bPR(i, j, k), bPL(i, j, k));
+						auto c_min = -min(0, bNR(i, j, k), bNL(i, j, k));
+						auto c = max(c_max, c_min);
+						for(int l = 0; l < 8; l++)
+							a(i, j, k, l) = 0.5 * (cR(i, j, k, l) + cL(i, j, k, l)) - 0.5 * c * (dR(i, j, k, l) - dL(i, j, k, l));
+					}
+				}
+			}
 		}
+	}
 }
 
 void prim2con()
 {
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 	for (amrex::MFIter mfi(con); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = con[mfi].array();
 		amrex::Array4<amrex::Real> const& b = prim[mfi].array();
-		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-		{
-			Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
-			Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
-			auto usq = square(i + NG, j + NG, k + NG, u, metricFuncField);
-			auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
-			double Gamma = sqrt(1 + usq);
-			auto vsq = square(i + NG, j + NG, k + NG, u / Gamma, metricFuncField);
-			auto Bv = dot(i + NG, j + NG, k + NG, u / Gamma, B, metricFuncField);
-			a(i, j, k, 0) = Gamma * b(i, j, k, RHO);
-			a(i, j, k, 1) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) - b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2)) - Gamma * b(i, j, k, RHO);
-			a(i, j, k, 2) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U1) + Bsq * b(i, j, k, U1) - Bv * b(i, j, k, B1);
-			a(i, j, k, 3) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U2) + Bsq * b(i, j, k, U2) - Bv * b(i, j, k, B2);
-			a(i, j, k, 4) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U3) + Bsq * b(i, j, k, U3) - Bv * b(i, j, k, B3);
-			a(i, j, k, 5) = b(i, j, k, B1);
-			a(i, j, k, 6) = b(i, j, k, B2);
-			a(i, j, k, 7) = b(i, j, k, B3);
-		});
+		const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
+					Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
+					Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
+					auto usq = square(i + NG, j + NG, k + NG, u, metricFuncField);
+					auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
+					double Gamma = sqrt(1 + usq);
+					auto vsq = square(i + NG, j + NG, k + NG, u / Gamma, metricFuncField);
+					auto Bv = dot(i + NG, j + NG, k + NG, u / Gamma, B, metricFuncField);
+					a(i, j, k, 0) = Gamma * b(i, j, k, RHO);
+					a(i, j, k, 1) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) - b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2)) - Gamma * b(i, j, k, RHO);
+					a(i, j, k, 2) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U1) + Bsq * b(i, j, k, U1) - Bv * b(i, j, k, B1);
+					a(i, j, k, 3) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U2) + Bsq * b(i, j, k, U2) - Bv * b(i, j, k, B2);
+					a(i, j, k, 4) = (b(i, j, k, RHO) + gam / (gam - 1) * b(i, j, k, UU)) * pow(Gamma, 2) * b(i, j, k, U3) + Bsq * b(i, j, k, U3) - Bv * b(i, j, k, B3);
+					a(i, j, k, 5) = b(i, j, k, B1);
+					a(i, j, k, 6) = b(i, j, k, B2);
+					a(i, j, k, 7) = b(i, j, k, B3);
+				}
+			}
+		}
 	}
 }
 
 void prim2src() {
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 	for (amrex::MFIter mfi(src); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
@@ -559,36 +646,40 @@ void prim2src() {
 		amrex::Array4<amrex::Real> const& b = prim[mfi].array();
 		amrex::Array4<amrex::Real> const& c = con[mfi].array();
 		amrex::Array4<amrex::Real> const& d = alphaDiffField[mfi].array();
-		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-		{
-			Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
-			Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
-			Eigen::Vector3d S{ c(i, j, k, 2) ,c(i, j, k, 3) ,c(i, j, k, 4) };
-			auto usq = square(i + NG, j + NG, k + NG, u, metricFuncField);
-			auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
-			double Gamma = sqrt(1 + usq);
-			auto vsq = square(i + NG, j + NG, k + NG, u / Gamma, metricFuncField);
-			auto Bv = dot(i + NG, j + NG, k + NG, u / Gamma, B, metricFuncField);
-			auto metric = metricFuncField(i + NG, j + NG, k + NG);
-			auto metricDiff = metricDiffField;
-			auto Sb = dot(i + NG, j + NG, k + NG, S, metricDiff(i, j, k, 1).betaVec(), metricFuncField);
-			// W^{ij}
-			Eigen::Matrix3d W = S * (u / Gamma).transpose() + (b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2))) * metric.gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - Bv * u / Gamma * B.transpose();
-			Eigen::Matrix3d betaDiff;
-			betaDiff << metricDiff(i, j, k, 1).betaVec()(0), metricDiff(i, j, k, 2).betaVec()(0), metricDiff(i, j, k, 3).betaVec()(0),
-				metricDiff(i, j, k, 1).betaVec()(1), metricDiff(i, j, k, 2).betaVec()(1), metricDiff(i, j, k, 3).betaVec()(1),
-				metricDiff(i, j, k, 1).betaVec()(2), metricDiff(i, j, k, 2).betaVec()(2), metricDiff(i, j, k, 3).betaVec()(2);
-			a(i, j, k, 0) = 0;
-			a(i, j, k, 1) = 0.5 * contract(W, (metric.betaVec()(0) * metricDiff(i, j, k, 1).gamma() + metric.betaVec()(1) * metricDiff(i, j, k, 2).gamma() + metric.betaVec()(2) * metricDiff(i, j, k, 3).gamma()))
-				+ contract(W * metric.gamma(), betaDiff)
-				- (metric.gamma().inverse() * S)(0) * d(i, j, k, 1) - (metric.gamma().inverse() * S)(1) * d(i, j, k, 2) - (metric.gamma().inverse() * S)(2) * d(i, j, k, 3);
-			a(i, j, k, 2) = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 1).gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 1);
-			a(i, j, k, 3) = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 2).gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 2);
-			a(i, j, k, 4) = 0.5 * metric.alpha() * contract(W, metricDiff(i, j, k, 3).gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 3);
-			a(i, j, k, 5) = 0;
-			a(i, j, k, 6) = 0;
-			a(i, j, k, 7) = 0;
-		});
+		const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
+					Eigen::Vector3d u{ b(i, j, k, U1) ,b(i, j, k, U2) ,b(i, j, k, U3) };
+					Eigen::Vector3d B{ b(i, j, k, B1) ,b(i, j, k, B2) ,b(i, j, k, B3) };
+					Eigen::Vector3d S{ c(i, j, k, 2) ,c(i, j, k, 3) ,c(i, j, k, 4) };
+					auto usq = square(i + NG, j + NG, k + NG, u, metricFuncField);
+					auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
+					double Gamma = sqrt(1 + usq);
+					auto vsq = square(i + NG, j + NG, k + NG, u / Gamma, metricFuncField);
+					auto Bv = dot(i + NG, j + NG, k + NG, u / Gamma, B, metricFuncField);
+					auto metric = metricFuncField[i + NG][j + NG][k + NG];
+					auto Sb = dot(i + NG, j + NG, k + NG, S, metricDiffField[i][j][k][1].betaVec(), metricFuncField);
+					// W^{ij}
+					Eigen::Matrix3d W = S * (u / Gamma).transpose() + (b(i, j, k, UU) + 0.5 * (Bsq * (1 + vsq) - pow(Bv, 2))) * metric.gamma().inverse() - B * B.transpose() / pow(Gamma, 2) - Bv * u / Gamma * B.transpose();
+					Eigen::Matrix3d betaDiff;
+					betaDiff << metricDiffField[i][j][k][1].betaVec()(0), metricDiffField[i][j][k][2].betaVec()(0), metricDiffField[i][j][k][3].betaVec()(0),
+					metricDiffField[i][j][k][1].betaVec()(1), metricDiffField[i][j][k][2].betaVec()(1), metricDiffField[i][j][k][3].betaVec()(1),
+						metricDiffField[i][j][k][1].betaVec()(2), metricDiffField[i][j][k][2].betaVec()(2), metricDiffField[i][j][k][3].betaVec()(2);
+					a(i, j, k, 0) = 0;
+					a(i, j, k, 1) = 0.5 * contract(W, (metric.betaVec()(0) * metricDiffField[i][j][k][1].gamma() + metric.betaVec()(1) * metricDiffField[i][j][k][2].gamma() + metric.betaVec()(2) * metricDiffField[i][j][k][3].gamma()))
+						+ contract(W * metric.gamma(), betaDiff)
+						- (metric.gamma().inverse() * S)(0) * d(i, j, k, 1) - (metric.gamma().inverse() * S)(1) * d(i, j, k, 2) - (metric.gamma().inverse() * S)(2) * d(i, j, k, 3);
+					a(i, j, k, 2) = 0.5 * metric.alpha() * contract(W, metricDiffField[i][j][k][1].gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 1);
+					a(i, j, k, 3) = 0.5 * metric.alpha() * contract(W, metricDiffField[i][j][k][2].gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 2);
+					a(i, j, k, 4) = 0.5 * metric.alpha() * contract(W, metricDiffField[i][j][k][3].gamma()) + Sb - (c(i, j, k, 0) + c(i, j, k, 1)) * d(i, j, k, 3);
+					a(i, j, k, 5) = 0;
+					a(i, j, k, 6) = 0;
+					a(i, j, k, 7) = 0;
+				}
+			}
+		}
 	}
 }
 
@@ -604,43 +695,51 @@ double df(int i, int j, int k, double D, double tau, Eigen::Vector3d S, Eigen::V
 }
 
 void con2prim() {
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
 	for (amrex::MFIter mfi(prim); mfi.isValid(); ++mfi)
 	{
 		const amrex::Box& bx = mfi.validbox();
 		amrex::Array4<amrex::Real> const& a = prim[mfi].array();
 		amrex::Array4<amrex::Real> const& b = con[mfi].array();
 		amrex::Array4<amrex::Real> const& c = ksi[mfi].array();
-		amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-		{
-			Eigen::Vector3d S{ b(i, j, k, 2) ,b(i, j, k, 3) ,b(i, j, k, 4) };
-			Eigen::Vector3d B{ b(i, j, k, 5) ,b(i, j, k, 6) ,b(i, j, k, 7) };
-			auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
-			auto SB = dot(i + NG, j + NG, k + NG, S, B, metricFuncField);
-			auto D = b(i, j, k, 0);
-			auto tau = b(i, j, k, 1);
-			auto x0 = c(i, j, k);
-			for (int iter = 0; iter < max_iter; iter++)
-			{
-				auto x1 = x0 - f(i, j, k, D, tau, S, B, x0) / df(i, j, k, D, tau, S, B, x0);
-				if (abs((x1 - x0) / x0) < tol)
-					break;
-				x0 = x1;
+		const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+        for (int i = lo.x; i <= hi.x; i++) {
+            for (int j = lo.y; j <= hi.y; j++) {
+                for (int k = lo.z; k <= hi.z; k++) {
+					Eigen::Vector3d S{ b(i, j, k, 2) ,b(i, j, k, 3) ,b(i, j, k, 4) };
+					Eigen::Vector3d B{ b(i, j, k, 5) ,b(i, j, k, 6) ,b(i, j, k, 7) };
+					auto Bsq = square(i + NG, j + NG, k + NG, B, metricFuncField);
+					auto SB = dot(i + NG, j + NG, k + NG, S, B, metricFuncField);
+					auto D = b(i, j, k, 0);
+					auto tau = b(i, j, k, 1);
+					auto x0 = c(i, j, k);
+					for (int iter = 0; iter < max_iter; iter++)
+					{
+						auto x1 = x0 - f(i, j, k, D, tau, S, B, x0) / df(i, j, k, D, tau, S, B, x0);
+						if (abs((x1 - x0) / x0) < tol)
+							break;
+						x0 = x1;
+					}
+					if (x0 > SMALL && !isnan(x0) && !isinf(x0))
+					{
+						c(i, j, k) = x0;
+						auto Gamma = 1 / sqrt(1 - square(i, j, k, S + SB * B / c(i, j, k), metricFuncField) / pow(c(i, j, k) + Bsq, 2));
+						a(i, j, k, RHO) = D / Gamma;
+						a(i, j, k, UU) = (gam - 1) / gam * (c(i, j, k) - Gamma * D) / pow(Gamma, 2);
+						a(i, j, k, U0) = Gamma / metricFuncField[i + NG][j + NG][k + NG].alpha();
+						a(i, j, k, U1) = (S(0) + SB * B(0) / c(i, j, k)) / (c(i, j, k) + Bsq) * Gamma;
+						a(i, j, k, U2) = (S(1) + SB * B(1) / c(i, j, k)) / (c(i, j, k) + Bsq) * Gamma;
+						a(i, j, k, U3) = (S(2) + SB * B(2) / c(i, j, k)) / (c(i, j, k) + Bsq) * Gamma;
+						a(i, j, k, B1) = B(0);
+						a(i, j, k, B2) = B(1);
+						a(i, j, k, B3) = B(2);
+						a(i, j, k, BSQ) = Bsq;
+					}
+				}
 			}
-			if (x0 > SMALL && !isnan(x0) && !isinf(x0))
-			{
-				c(i, j, k) = x0;
-				auto Gamma = 1 / sqrt(1 - square(i, j, k, S + SB * B / c(i, j, k), metricFuncField) / pow(c(i, j, k) + Bsq, 2));
-				a(i, j, k, RHO) = D / Gamma;
-				a(i, j, k, UU) = (gam - 1) / gam * (c(i, j, k) - Gamma * D) / pow(Gamma, 2);
-				a(i, j, k, U0) = Gamma / metricFuncField(i + NG, j + NG, k + NG).alpha();
-				a(i, j, k, U1) = (S(0) + SB * B(0) / c(i, j, k)) / (c(i, j, k) + Bsq) * Gamma;
-				a(i, j, k, U2) = (S(1) + SB * B(1) / c(i, j, k)) / (c(i, j, k) + Bsq) * Gamma;
-				a(i, j, k, U3) = (S(2) + SB * B(2) / c(i, j, k)) / (c(i, j, k) + Bsq) * Gamma;
-				a(i, j, k, B1) = B(0);
-				a(i, j, k, B2) = B(1);
-				a(i, j, k, B3) = B(2);
-				a(i, j, k, BSQ) = Bsq;
-			}
-		});
+		}
 	}
 }
