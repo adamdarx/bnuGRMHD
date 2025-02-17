@@ -6,7 +6,7 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter, MaxNLocator
 
-N1, N2, N3, NPRIM = 32, 16, 4, 10
+N1, N2, N3, NPRIM = 128, 128, 4, 10
 a = 0.9375
 R0 = 0
 h = 0

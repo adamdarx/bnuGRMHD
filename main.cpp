@@ -24,7 +24,7 @@ int main(int argc, char* argv[])
 				for (int k = 0; k < N3 + 2 * NG; k++)
 					for (int row = 0; row < 4; row++)
 						for (int col = 0; col < 4; col++)
-							metricFuncField(i, j, k).m(row, col) = metricFunc(row, col)(X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
+							metricFuncField[i][j][k].m(row, col) = metricFunc[row][col](X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
 
 		for (int i = 0; i < N1 + 1; i++)
 			for (int j = 0; j < N2 + 1; j++)
@@ -32,9 +32,9 @@ int main(int argc, char* argv[])
 					for (int row = 0; row < 4; row++)
 						for (int col = 0; col < 4; col++)
 						{
-							metricFuncHalfField[0](i, j, k).m(row, col) = metricFunc(row, col)(X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
-							metricFuncHalfField[1](i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
-							metricFuncHalfField[2](i, j, k).m(row, col) = metricFunc(row, col)(X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
+							metricFuncHalfField[0][i][j][k].m(row, col) = metricFunc[row][col](X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
+							metricFuncHalfField[1][i][j][k].m(row, col) = metricFunc[row][col](X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
+							metricFuncHalfField[2][i][j][k].m(row, col) = metricFunc[row][col](X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
 						}
 
 		// 利用中心差分计算alpha的导数
@@ -43,9 +43,9 @@ int main(int argc, char* argv[])
 				for (int k = 0; k < N3; k++)
 					{
 						alphaDiffField[i][j][k][0] = 0;
-						alphaDiffField[i][j][k][1] = (metricFuncField(i + NG + 1, j + NG, k + NG).alpha() - metricFuncField(i + NG - 1, j + NG, k + NG).alpha()) / (2 * dx1);
-						alphaDiffField[i][j][k][2] = (metricFuncField(i + NG, j + NG + 1, k + NG).alpha() - metricFuncField(i + NG, j + NG - 1, k + NG).alpha()) / (2 * dx2);
-						alphaDiffField[i][j][k][3] = (metricFuncField(i + NG, j + NG, k + NG + 1).alpha() - metricFuncField(i + NG, j + NG, k + NG - 1).alpha()) / (2 * dx3);
+						alphaDiffField[i][j][k][1] = (metricFuncField[i + NG + 1][j + NG][k + NG].alpha() - metricFuncField[i + NG - 1][j + NG][k + NG].alpha()) / (2 * dx1);
+						alphaDiffField[i][j][k][2] = (metricFuncField[i + NG][j + NG + 1][k + NG].alpha() - metricFuncField[i + NG][j + NG - 1][k + NG].alpha()) / (2 * dx2);
+						alphaDiffField[i][j][k][3] = (metricFuncField[i + NG][j + NG][k + NG + 1].alpha() - metricFuncField[i + NG][j + NG][k + NG - 1].alpha()) / (2 * dx3);
 					}
 
 		for (int i = 0; i < N1 + 1; i++)
@@ -54,9 +54,9 @@ int main(int argc, char* argv[])
 					for (int comp = 0; comp < 3; comp++)
 					{
 						alphaDiffHalfField[comp][i][j][k][0] = 0;
-						alphaDiffHalfField[comp][i][j][k][1] = (metricFuncField(i + 1, j, k).alpha() - metricFuncField(i, j, k).alpha()) / (dx1);
-						alphaDiffHalfField[comp][i][j][k][2] = (metricFuncField(i, j + 1, k).alpha() - metricFuncField(i, j, k).alpha()) / (dx2);
-						alphaDiffHalfField[comp][i][j][k][3] = (metricFuncField(i, j, k + 1).alpha() - metricFuncField(i, j, k).alpha()) / (dx3);
+						alphaDiffHalfField[comp][i][j][k][1] = (metricFuncField[i + 1][j][k].alpha() - metricFuncField[i][j][k].alpha()) / (dx1);
+						alphaDiffHalfField[comp][i][j][k][2] = (metricFuncField[i][j + 1][k].alpha() - metricFuncField[i][j][k].alpha()) / (dx2);
+						alphaDiffHalfField[comp][i][j][k][3] = (metricFuncField[i][j][k + 1].alpha() - metricFuncField[i][j][k].alpha()) / (dx3);
 					}
 
 		for (int i = 0; i < N1; i++)
@@ -65,7 +65,7 @@ int main(int argc, char* argv[])
 					for(int l = 0; l < 4; l++)
 						for (int row = 0; row < 4; row++)
 							for (int col = 0; col < 4; col++)
-								metricDiffField(i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
+								metricDiffField[i][j][k][l].m(row, col) = metricDiff[row][col][l](X1min + (i - NG) * dx1, X2min + (j - NG) * dx2, X3min + (k - NG) * dx3);
 
 		for (int i = 0; i < N1; i++)
 			for (int j = 0; j < N2; j++)
@@ -74,9 +74,9 @@ int main(int argc, char* argv[])
 						for (int row = 0; row < 4; row++)
 							for (int col = 0; col < 4; col++)
 							{
-								metricDiffHalfField[0](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
-								metricDiffHalfField[1](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
-								metricDiffHalfField[2](i, j, k, l).m(row, col) = metricDiff(row, col, l)(X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
+								metricDiffHalfField[0][i][j][k][l].m(row, col) = metricDiff[row][col][l](X1min + (2 * i - 1) * dx1 / 2, X2min + j * dx2, X3min + k * dx3);
+								metricDiffHalfField[1][i][j][k][l].m(row, col) = metricDiff[row][col][l](X1min + i * dx1, X2min + (2 * j - 1) * dx2 / 2, X3min + k * dx3);
+								metricDiffHalfField[2][i][j][k][l].m(row, col) = metricDiff[row][col][l](X1min + i * dx1, X2min + j * dx2, X3min + (2 * k - 1) * dx3 / 2);
 							}
 		init();
 		char filename[32];
@@ -146,9 +146,9 @@ int main(int argc, char* argv[])
 				for (int k = 1; k < N3 - 1; k++)
 					for (int l = 0; l < 8; l++)
 						con[i][j][k][l] += src[i][j][k][l] * Delta_t / 2
-						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0](i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF[0][i + 1][j][k][l] - sqrt(metricFuncHalfField[0](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF[0][i][j][k][l])
-						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1](i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF[1][i][j + 1][k][l] - sqrt(metricFuncHalfField[1](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF[1][i][j][k][l])
-						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2](i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF[2][i][j][k + 1][l] - sqrt(metricFuncHalfField[2](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxLLF[2][i][j][k][l]);
+						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0][i + 1][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[0][i + 1][j][k][l] - sqrt(metricFuncHalfField[0][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[0][i][j][k][l])
+						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1][i][j + 1][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[1][i][j + 1][k][l] - sqrt(metricFuncHalfField[1][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[1][i][j][k][l])
+						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2][i][j][k + 1].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[2][i][j][k + 1][l] - sqrt(metricFuncHalfField[2][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[2][i][j][k][l]);
 
 
 		con2prim();
@@ -188,9 +188,9 @@ int main(int argc, char* argv[])
 				for (int k = 1; k < N3 - 1; k++)
 					for (int l = 0; l < 8; l++)
 						con[i][j][k][l] += src[i][j][k][l] * Delta_t / 2
-						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0](i + 1, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[0][i + 1][j][k][l] - sqrt(metricFuncHalfField[0](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[0][i][j][k][l])
-						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1](i, j + 1, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[1][i][j + 1][k][l] - sqrt(metricFuncHalfField[1](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[1][i][j][k][l])
-						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2](i, j, k + 1).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[2][i][j][k + 1][l] - sqrt(metricFuncHalfField[2](i, j, k).gamma().determinant() / metricFuncField(i + NG, j + NG, k + NG).gamma().determinant()) * fluxSmoothLLF[2][i][j][k][l]);
+						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0][i + 1][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[0][i + 1][j][k][l] - sqrt(metricFuncHalfField[0][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[0][i][j][k][l])
+						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1][i][j + 1][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[1][i][j + 1][k][l] - sqrt(metricFuncHalfField[1][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[1][i][j][k][l])
+						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2][i][j][k + 1].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[2][i][j][k + 1][l] - sqrt(metricFuncHalfField[2][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[2][i][j][k][l]);
 
 		con2prim();
 
