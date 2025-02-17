@@ -494,6 +494,7 @@ void init()
         for (int i = lo.x; i < hi.x; i++) {
             for (int j = lo.y; j < hi.y; j++) {
                 for (int k = lo.z; k < hi.z; k++) {
+                    if(i == 0 || j == 0) continue;
                     A[i][j][k] = 0.;
                     r = BL_coord1[i][j][k];
                     if (r >= rin) {

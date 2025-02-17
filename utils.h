@@ -12,11 +12,11 @@
 const MetricComponent ZERO_COMPONENT = [](double x, double y, double z) { return 0; };
 constexpr auto a = (0.9375);
 constexpr auto h = (0.);
-constexpr auto SMALL = (1.e-16);
+constexpr auto SMALL = (1.e-20);
 constexpr auto theta = 0.;
 constexpr auto NDIM = (4);
-constexpr auto N1 = (128);
-constexpr auto N2 = (128);
+constexpr auto N1 = (16);
+constexpr auto N2 = (16);
 constexpr auto N3 = (4);
 constexpr auto NG = (2);
 constexpr auto max_grid_size = (16);
