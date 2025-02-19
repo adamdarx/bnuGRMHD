@@ -194,14 +194,14 @@ int main(int argc, char* argv[])
 		fix();
 		
 		totalTime += clock() - start;
-		totalPhysicalTime += Delta_t;
-		std::cout << "Epoch: " << epoch << "\tTime(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		if (int(totalPhysicalTime) % 10 == 0 && int(totalPhysicalTime) / 10 > 0)
+		if (int(totalPhysicalTime) % 10 != int(totalPhysicalTime + Delta_t) % 10)
 		{
 			char filename[32];
 			sprintf(filename, "./data/data%0.4d.bin", int(totalPhysicalTime) / 10);
 			write_bin(fopen(filename, "wb"));
 		}
+		totalPhysicalTime += Delta_t;
+		std::cout << "Epoch: " << epoch << "\tTime(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
 	}
 	return 0;
 }
