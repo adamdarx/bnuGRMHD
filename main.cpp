@@ -379,7 +379,7 @@ int main(int argc, char* argv[])
 		totalTime += clock() - start;
 		totalPhysicalTime += Delta_t;
 		amrex::Print() << "Epoch: " << epoch << "\tTime(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		if(epoch % 100 == 0)
+		if(int(totalPhysicalTime) % 10 == 0)
 		{
 			char filename[16];
 			sprintf(filename, "plt%0.3d", epoch / 100);

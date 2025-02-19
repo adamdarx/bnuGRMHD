@@ -6,7 +6,6 @@
 #include <AMReX_PlotFileUtil.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_MFParallelFor.H>
-#include <unsupported/Eigen/CXX11/Tensor>
 #include "Metric.h"
 
 constexpr auto a = (0.9375);
@@ -15,8 +14,8 @@ constexpr auto SMALL = (1.e-20);
 constexpr auto theta = 0.;
 constexpr auto NDIM = (4);
 constexpr auto N1 = (128);
-constexpr auto N2 = (64);
-constexpr auto N3 = (4);
+constexpr auto N2 = (128);
+constexpr auto N3 = (16);
 constexpr auto NG = (2);
 constexpr auto max_grid_size = (16);
 constexpr auto PI = (3.14159265358979323846);
@@ -40,8 +39,8 @@ constexpr auto beta = (100.);
 constexpr auto gam = (5. / 3.);
 constexpr auto kappa = (1.e-3);
 
-unsigned short max_iter = 5;		// maximum of iteration
-double tol = 1e-4;					// tolerance of root devation
+unsigned short max_iter = 8;		// maximum of iteration
+double tol = 1e-10;					// tolerance of root devation
 auto epochNum = 10000;				// number of iteration epoch
 //MKS grid
 double Xgrid1[N1][N2][N3];
@@ -556,7 +555,7 @@ void calFluxHHL() {
 						auto c_max = max(0, bPR(i, j, k), bPL(i, j, k));
 						auto c_min = -min(0, bNR(i, j, k), bNL(i, j, k));
 						for(int l = 0; l < 8; l++)
-							a(i, j, k, l) = c_max + c_min ? (c_min * cR(i, j, k, l) + c_max * cL(i, j, k, l) - c_max * c_min * (cR(i, j, k, l) - cL(i, j, k, l))) / (c_max + c_min) : 0;
+							a(i, j, k, l) = (c_max + c_min) ? (c_min * cR(i, j, k, l) + c_max * cL(i, j, k, l) - c_max * c_min * (cR(i, j, k, l) - cL(i, j, k, l))) / (c_max + c_min) : 0;
 					}
 				}
 			}
@@ -723,7 +722,7 @@ void con2prim() {
 							break;
 						x0 = x1;
 					}
-					if (x0 > SMALL && !isnan(x0) && !isinf(x0))
+					if (x0 > SMALL && !std::isnan(x0) && !std::isinf(x0))
 					{
 						c(i, j, k) = x0;
 						auto Gamma = 1 / sqrt(1 - square(i, j, k, S + SB * B / c(i, j, k), metricFuncField) / pow(c(i, j, k) + Bsq, 2));
