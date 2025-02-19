@@ -1,12 +1,11 @@
 ﻿#pragma once
 #include <omp.h>
 #include <iostream>
-#include <unsupported/Eigen/CXX11/Tensor>
 #include "Metric.h"
 MetricComponent ZERO_COMPONENT = [](double x, double y, double z) { return 0; };
 constexpr auto a = (0.9375);
 constexpr auto h = (0.);
-constexpr auto SMALL = (1.e-16);
+constexpr auto SMALL = (1.e-20);
 constexpr auto theta = 0.;
 constexpr auto NDIM = (4);
 constexpr auto N1 = (128);
@@ -21,7 +20,7 @@ constexpr auto X2max = (PI - SMALL);
 constexpr auto X3min = (SMALL);
 constexpr auto X3max = (2. * PI - SMALL);
 constexpr auto R0 = (0.);
-constexpr auto cour = 0.7;
+constexpr auto cour = 0.9;
 constexpr auto LEFT = 0;
 constexpr auto RIGHT = 1;
 constexpr auto NEG = 0;
@@ -34,9 +33,9 @@ constexpr auto beta = (100.);
 constexpr auto gam = (5. / 3.);
 constexpr auto kappa = (1.e-3);
 
-unsigned short max_iter = 5;		// maximum of iteration
-double tol = 1e-4;					// tolerance of root devation
-auto epochNum = 10000;				// number of iteration epoch
+unsigned short max_iter = 10;		// maximum of iteration
+double tol = 1e-10;					// tolerance of root devation
+auto epochNum = 100;				// number of iteration epoch
 //MKS grid
 double Xgrid1[N1][N2][N3];
 double Xgrid2[N1][N2][N3];
@@ -461,10 +460,10 @@ void primLR2cLR() {
 								auto cA_square = (Bsq * (1 - vsq) + pow(Bv, 2)) / (prim[i][j][k][RHO] + gam / (gam - 1) * prim[i][j][k][UU] + Bsq * (1 - vsq) + pow(Bv, 2));
 								auto vf_square = cA_square + cs_square - cA_square * cs_square;
 								auto metricInv = metric.m.inverse();
-								c[PN][LR][comp][i][j][k] = (pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0) + (2 * PN - 1) * sqrt(abs(
+								c[PN][LR][comp][i][j][k] = (pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0) + (2 * PN - 1) * sqrt(
 									pow((pow(vf_square, 2) * metricInv(0, comp) - pow(1 - vf_square, 2) * u0 * ui(comp)) / (pow(vf_square, 2) * metricInv(0, 0) - pow(1 - vf_square, 2) * u0 * u0), 2)
 									- (vf_square * metricInv(comp, comp) - (1 - vf_square) * ui(comp) * ui(comp)) / (vf_square * metricInv(0, 0) - (1 - vf_square) * u0 * u0)
-								));
+								);
 							}
 					}
 				}
@@ -474,27 +473,21 @@ void primLR2cLR() {
 }
 
 void calFluxHHL() {
-#pragma omp parallel for
 	for (int i = 0; i < N1; i++)
 	{
-#pragma omp parallel for
 		for (int j = 0; j < N2; j++)
 		{
-#pragma omp parallel for
 			for (int k = 0; k < N3; k++)
 			{
-#pragma omp parallel for
 				for (int LR = 0; LR < 2; LR++)
 				{
-#pragma omp parallel for
 					for (int comp = 0; comp < 3; comp++)
 					{
-#pragma omp parallel for
 						for (int l = 0; l < 8; l++)
 						{
 							auto c_max = max(0, c[POS][RIGHT][comp][i][j][k], c[POS][LEFT][comp][i][j][k]);
 							auto c_min = -min(0, c[NEG][LEFT][comp][i][j][k], c[NEG][LEFT][comp][i][j][k]);
-							fluxHLL[comp][i][j][k][l] = c_max + c_min ? (c_min * fluxLR[RIGHT][comp][i][j][k][l] + c_max * fluxLR[LEFT][comp][i][j][k][l] - c_max * c_min * (conLR[RIGHT][comp][i][j][k][l] - conLR[LEFT][comp][i][j][k][l])) / (c_max + c_min) : 0;
+							fluxHLL[comp][i][j][k][l] = (c_max + c_min) ? (c_min * fluxLR[RIGHT][comp][i][j][k][l] + c_max * fluxLR[LEFT][comp][i][j][k][l] - c_max * c_min * (conLR[RIGHT][comp][i][j][k][l] - conLR[LEFT][comp][i][j][k][l])) / (c_max + c_min) : 0;
 						}
 					}
 				}
@@ -637,7 +630,7 @@ void con2prim() {
 						break;
 					x0 = x1;
 				}
-				if (x0 > SMALL && !isnan(x0) && !isinf(x0))
+				if (x0 > SMALL && !std::isnan(x0) && !std::isinf(x0))
 				{
 					ksi[i][j][k] = x0;
 					auto Gamma = 1 / sqrt(1 - square(i, j, k, S + SB * B / ksi[i][j][k], metricFuncField) / pow(ksi[i][j][k] + Bsq, 2));

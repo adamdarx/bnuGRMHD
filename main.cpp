@@ -4,7 +4,6 @@ Date: 2024/02/02
 */
 #include <cmath>
 #include <ctime>
-#include <fstream>
 #include "Metric.h"
 #include "utils.h"
 #include "init.h"
@@ -12,8 +11,6 @@ Date: 2024/02/02
 
 int main(int argc, char* argv[])
 {
-	std::ofstream ofs;
-	ofs.open("grmhd.log", std::ios::out);
 	auto totalTime = 0.;
 	auto totalPhysicalTime = 0.;
 
@@ -188,9 +185,9 @@ int main(int argc, char* argv[])
 				for (int k = 1; k < N3 - 1; k++)
 					for (int l = 0; l < 8; l++)
 						con[i][j][k][l] += src[i][j][k][l] * Delta_t / 2
-						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0][i + 1][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[0][i + 1][j][k][l] - sqrt(metricFuncHalfField[0][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[0][i][j][k][l])
-						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1][i][j + 1][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[1][i][j + 1][k][l] - sqrt(metricFuncHalfField[1][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[1][i][j][k][l])
-						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2][i][j][k + 1].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[2][i][j][k + 1][l] - sqrt(metricFuncHalfField[2][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxLLF[2][i][j][k][l]);
+						- Delta_t / (2 * dx1) * (sqrt(metricFuncHalfField[0][i + 1][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxSmoothLLF[0][i + 1][j][k][l] - sqrt(metricFuncHalfField[0][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxSmoothLLF[0][i][j][k][l])
+						- Delta_t / (2 * dx2) * (sqrt(metricFuncHalfField[1][i][j + 1][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxSmoothLLF[1][i][j + 1][k][l] - sqrt(metricFuncHalfField[1][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxSmoothLLF[1][i][j][k][l])
+						- Delta_t / (2 * dx3) * (sqrt(metricFuncHalfField[2][i][j][k + 1].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxSmoothLLF[2][i][j][k + 1][l] - sqrt(metricFuncHalfField[2][i][j][k].gamma().determinant() / metricFuncField[i + NG][j + NG][k + NG].gamma().determinant()) * fluxSmoothLLF[2][i][j][k][l]);
 
 		con2prim();
 
@@ -198,21 +195,13 @@ int main(int argc, char* argv[])
 		
 		totalTime += clock() - start;
 		totalPhysicalTime += Delta_t;
-		std::cout << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		char filename[32];
-		sprintf(filename, "./data/data%0.4d.bin", epoch);
-		write_bin(fopen(filename, "wb"));
-		ofs << "--------Epoch--------" << epoch << std::endl;
-		for(int i = 0; i < N1; i++)
-			for(int j = 0; j < N2; j++)
-				for (int k = 0; k < N3; k++)
-				{
-					for (int l = 0; l < NPRIM; l++)
-						ofs << prim[i][j][k][l] << "\t";
-					ofs << std::endl;
-				}
-		ofs << "Time(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
+		std::cout << "Epoch: " << epoch << "\tTime(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
+		if (int(totalPhysicalTime) % 10 == 0)
+		{
+			char filename[32];
+			sprintf(filename, "./data/data%0.4d.bin", epoch);
+			write_bin(fopen(filename, "wb"));
+		}
 	}
-	ofs << "Total times(ms): " << totalTime << std::endl << "Average time(ms): " << totalTime / epochNum << std::endl;
 	return 0;
 }
