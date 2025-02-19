@@ -377,14 +377,14 @@ int main(int argc, char* argv[])
 		fix();
 		
 		totalTime += clock() - start;
-		totalPhysicalTime += Delta_t;
-		amrex::Print() << "Epoch: " << epoch << "\tTime(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		if(int(totalPhysicalTime) % 10 == 0 && int(totalPhysicalTime) / 10 > 0)
+		if (int(totalPhysicalTime) % 10 != int(totalPhysicalTime + Delta_t) % 10)
 		{
 			char filename[16];
 			sprintf(filename, "plt%0.3d", int(totalPhysicalTime) / 10);
 			WriteSingleLevelPlotfile(filename, prim, {"RHO", "UU", "U0", "U1", "U2", "U3", "B1", "B2", "B3", "BSQ"}, geom, totalPhysicalTime, int(totalPhysicalTime) / 10);
 		}
+		totalPhysicalTime += Delta_t;
+		amrex::Print() << "Epoch: " << epoch << "\tTime(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
 	}
 	amrex::Finalize();
 	return 0;
