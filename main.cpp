@@ -195,14 +195,12 @@ int main(int argc, char* argv[])
 		
 		totalTime += clock() - start;
 		totalPhysicalTime += Delta_t;
-		std::cout << "Epoch: " << epoch << "\tTime(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
-		if (int(totalPhysicalTime - Delta_t) / 10 != int(totalPhysicalTime) / 10)
+		if (int(totalPhysicalTime - Delta_t) / 2 != int(totalPhysicalTime) / 2)
 		{
 			char filename[32];
-			sprintf(filename, "./data/data%0.4d.bin", int(totalPhysicalTime) / 10);
+			sprintf(filename, "./data/data%0.4d.bin", int(totalPhysicalTime) / 2);
 			write_bin(fopen(filename, "wb"));
 		}
-		totalPhysicalTime += Delta_t;
 		std::cout << "Epoch: " << epoch << "\tTime(ms): " << clock() - start << "\tPhysical Time: " << Delta_t << "\tTotal Physical Time: " << totalPhysicalTime << std::endl;
 	}
 	return 0;
