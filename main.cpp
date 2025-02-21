@@ -313,6 +313,30 @@ int main(int argc, char* argv[])
 
 		calFluxTVDLF();
 
+		for(int comp = 0; comp < 3; comp++)
+		{
+#ifdef AMREX_USE_OMP
+#pragma omp parallel
+#endif
+			for (amrex::MFIter mfi(fluxLLF[comp]); mfi.isValid(); ++mfi)
+			{
+				const amrex::Box& bx = mfi.validbox();
+				amrex::Array4<amrex::Real> const& a = fluxLLF[comp][mfi].array();
+				amrex::Array4<amrex::Real const> const& b = fluxHLL[comp][mfi].const_array();
+				amrex::Array4<amrex::Real const> const& c = fluxTVDLF[comp][mfi].const_array();
+				const auto lo = lbound(bx);
+				const auto hi = ubound(bx);
+				for (int i = lo.x; i <= hi.x; i++) {
+					for (int j = lo.y; j <= hi.y; j++) {
+						for (int k = lo.z; k <= hi.z; k++) {
+							for(int l = 0; l < 8; l++)
+								a(i,j,k,l) = theta * b(i,j,k,l) + (1 - theta) * c(i,j,k,l);
+						}
+					}
+				}
+			}
+		}
+		
 		amrex::MultiFab::Copy(fluxLLF[0], fluxSmoothLLF[0], 0, 0, 8, 0);
 		amrex::MultiFab::Copy(fluxLLF[1], fluxSmoothLLF[1], 0, 0, 8, 0);
 		amrex::MultiFab::Copy(fluxLLF[2], fluxSmoothLLF[2], 0, 0, 8, 0);
