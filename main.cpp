@@ -167,6 +167,13 @@ int main(int argc, char* argv[])
 		calFluxTVDLF();
 
 #pragma omp parallel for
+		for (int i = 0; i < N1; i++)
+			for (int j = 0; j < N2; j++)
+				for (int k = 0; k < N3; k++)
+					for(int l = 0; l < 8; l++)
+						for(int comp = 0; comp < 3; comp++)
+							fluxLLF[comp][i][j][k][l] = theta * fluxHLL[comp][i][j][k][l] + (1 - theta) * fluxTVDLF[comp][i][j][k][l];
+#pragma omp parallel for
 		for (int i = 1; i < N1 - 1; i++)
 			for (int j = 1; j < N2 - 1; j++)
 				for (int k = 1; k < N3 - 1; k++)
